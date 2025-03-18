@@ -1,5 +1,5 @@
 {
-  "name": "ckbfs-api",
+  "name": "@ckbfs/api",
   "version": "1.0.0",
   "description": "SDK for CKBFS protocol on CKB",
   "license": "MIT",
