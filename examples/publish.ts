@@ -1,0 +1,76 @@
+import { CKBFS, NetworkType, ProtocolVersion } from '../src/index';
+
+// Replace with your actual private key
+const privateKey = process.env.CKB_PRIVATE_KEY || 'your-private-key-here';
+
+// Initialize the SDK with network and version options
+const ckbfs = new CKBFS(
+  privateKey,
+  NetworkType.Testnet, // Use testnet
+  {
+    version: ProtocolVersion.V2, // Use the latest version (V2)
+    chunkSize: 30 * 1024, // 30KB chunks
+    useTypeID: false // Use code hash instead of type ID
+  }
+);
+
+/**
+ * Example of publishing a file to CKBFS
+ */
+async function publishExample() {
+  try {
+    // Get address info
+    const address = await ckbfs.getAddress();
+    console.log(`Using address: ${address.toString()}`);
+    
+    // Get CKBFS script config
+    const config = ckbfs.getCKBFSConfig();
+    console.log('Using CKBFS config:', config);
+    
+    // Publish a text file to CKBFS
+    const filePath = './example.txt';
+    
+    // You can provide additional options
+    const options = {
+      contentType: 'text/plain',
+      filename: 'example.txt',
+      // Specify capacity if needed (default is 200 CKB)
+      // capacity: 250n * 100000000n
+    };
+    
+    console.log(`Publishing file: ${filePath}`);
+    const txHash = await ckbfs.publishFile(filePath, options);
+    
+    console.log(`File published successfully!`);
+    console.log(`Transaction Hash: ${txHash}`);
+    console.log(`View at: https://pudge.explorer.nervos.org/transaction/${txHash}`);
+    
+    return txHash;
+  } catch (error) {
+    console.error('Error publishing file:', error);
+    throw error;
+  }
+}
+
+/**
+ * Main function to run the example
+ */
+async function main() {
+  console.log('Running CKBFS publishing example...');
+  console.log('----------------------------------');
+  console.log(`Using CKBFS protocol version: ${ProtocolVersion.V2}`);
+  
+  try {
+    await publishExample();
+    console.log('Example completed successfully!');
+    process.exit(0);
+  } catch (error) {
+    console.error('Example failed:', error);
+    process.exit(1);
+  }
+}
+
+// Run the example if this file is executed directly
+if (require.main === module) {
+  main().catch(console.error);
+} 

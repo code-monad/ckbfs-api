@@ -1,0 +1,39 @@
+{
+  "name": "ckbfs-api",
+  "version": "1.0.0",
+  "description": "SDK for CKBFS protocol on CKB",
+  "license": "MIT",
+  "author": "",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "example": "ts-node examples/index.ts",
+    "example:publish": "ts-node examples/publish.ts",
+    "example:append": "ts-node examples/append.ts"
+  },
+  "keywords": [
+    "ckb",
+    "ckbfs",
+    "nervos",
+    "sdk"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.7.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "@types/jest": "^29.5.12"
+  },
+  "dependencies": {
+    "@ckb-ccc/core": "^0.1.0-alpha.4",
+    "@ckb-lumos/base": "^0.23.0",
+    "@ckb-lumos/codec": "^0.23.0",
+    "hash-wasm": "^4.11.0"
+  }
+}
