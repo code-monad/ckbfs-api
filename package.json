@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "SDK for CKBFS protocol on CKB",
   "license": "MIT",
-  "author": "",
+  "author": "Code Monad<code@lab-11.org>",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
