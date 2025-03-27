@@ -113,6 +113,7 @@ export async function createPublishTransaction(
     contentType, 
     filename, 
     lock, 
+    capacity,
     feeRate,
     network = DEFAULT_NETWORK,
     version = DEFAULT_VERSION,
@@ -164,6 +165,12 @@ export async function createPublishTransaction(
   // Get CKBFS script config
   const config = getCKBFSScriptConfig(network, version, useTypeID);
   
+  const preCkbfsTypeScript = new Script(
+    ensureHexPrefix(config.codeHash),
+    config.hashType as any,
+    "0x0000000000000000000000000000000000000000000000000000000000000000"
+  );
+  const ckbfsCellSize = BigInt(outputData.length + preCkbfsTypeScript.occupiedSize + lock.occupiedSize + 8) * 100000000n
   // Create pre transaction without cell deps initially
   const preTx = Transaction.from({
     outputs: [
@@ -173,7 +180,8 @@ export async function createPublishTransaction(
         lock, 
         network, 
         version,
-        useTypeID 
+        useTypeID,
+        capacity: ckbfsCellSize || capacity
       })
     ],
     witnesses: [
@@ -339,7 +347,7 @@ export async function createAppendTransaction(
   // Add the additional capacity to the original cell capacity
   console.log(`Original capacity: ${capacity}, Additional needed: ${additionalCapacity}, Data size diff: ${dataSizeDiff}, Version: ${version}`);
   const outputCapacity = capacity + additionalCapacity;
-  
+
   // Create initial transaction with the CKBFS cell input
   const tx = Transaction.from({
     inputs: [
