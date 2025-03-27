@@ -297,7 +297,7 @@ export async function createAppendTransaction(
   }
   
   // Update backlinks
-  const backLinks = [newBackLink];
+  const backLinks = [...(data.backLinks || []), newBackLink];
   
   // Define indices based on version
   let outputData: Uint8Array;
