@@ -125,7 +125,9 @@ export async function createPublishTransaction(
   const combinedContent = Buffer.concat(contentChunks);
   const checksum = await calculateChecksum(combinedContent);
   
-  // Create CKBFS witnesses
+  // Create CKBFS witnesses - each chunk already includes the CKBFS header
+  // Pass 0 as version byte - this is the protocol version byte in the witness header
+  // not to be confused with the Protocol Version (V1 vs V2)
   const ckbfsWitnesses = createChunkedCKBFSWitnesses(contentChunks);
   
   // Calculate the actual witness indices where our content is placed
@@ -141,17 +143,17 @@ export async function createPublishTransaction(
   let outputData: Uint8Array;
   
   if (version === ProtocolVersion.V1) {
-    // V1 format: Single index field
+    // V1 format: Single index field (a single number, not an array)
     // For V1, use the first index where content is placed
     outputData = CKBFSData.pack({
-      index: [contentStartIndex],
+      index: contentStartIndex,
       checksum,
       contentType: textEncoder.encode(contentType),
       filename: textEncoder.encode(filename),
       backLinks: [],
     }, version);
   } else {
-    // V2 format: Multiple indexes
+    // V2 format: Multiple indexes (array of numbers)
     // For V2, use all the indices where content is placed
     outputData = CKBFSData.pack({
       indexes: witnessIndices,
@@ -265,42 +267,18 @@ export async function createAppendTransaction(
   // Get CKBFS script config early to use version info
   const config = getCKBFSScriptConfig(network, version);
   
-  // Create CKBFS witnesses - this may vary between V1 and V2
+  // Create CKBFS witnesses - each chunk already includes the CKBFS header
+  // Pass 0 as version byte - this is the protocol version byte in the witness header
+  // not to be confused with the Protocol Version (V1 vs V2)
   const ckbfsWitnesses = createChunkedCKBFSWitnesses(contentChunks);
   
-  // Combine the new content chunks
+  // Combine the new content chunks for checksum calculation
   const combinedContent = Buffer.concat(contentChunks);
   
-  // Instead of calculating a new checksum from scratch, update the existing checksum
-  // with the new content - this is more efficient and matches the Adler32 algorithm's
-  // cumulative nature
+  // Update the existing checksum with the new content - this matches Adler32's
+  // cumulative nature as required by Rule 11 in the RFC
   const contentChecksum = await updateChecksum(data.checksum, combinedContent);
   console.log(`Updated checksum from ${data.checksum} to ${contentChecksum} for appended content`);
-  
-  // Create backlink for the current state based on version
-  let newBackLink: any;
-  
-  if (version === ProtocolVersion.V1) {
-    // V1 format: Use index field (single number)
-    newBackLink = {
-      txHash: outPoint.txHash,
-      index: data.index && data.index.length > 0 ? data.index[0] : 0,
-      checksum: data.checksum,
-    };
-  } else {
-    // V2 format: Use indexes field (array of numbers)
-    newBackLink = {
-      txHash: outPoint.txHash,
-      indexes: data.indexes || data.index || [],
-      checksum: data.checksum,
-    };
-  }
-  
-  // Update backlinks
-  const backLinks = [...(data.backLinks || []), newBackLink];
-  
-  // Define indices based on version
-  let outputData: Uint8Array;
   
   // Calculate the actual witness indices where our content is placed
   // Index 0 is reserved for the secp256k1 witness for signing
@@ -311,42 +289,76 @@ export async function createAppendTransaction(
     (_, i) => contentStartIndex + i
   );
   
+  // Create backlink for the current state based on version
+  let newBackLink: any;
+  
   if (version === ProtocolVersion.V1) {
-    // In V1, use the first index where content is placed
-    // (even if we have multiple witnesses, V1 only supports a single index)
+    // V1 format: Use index field (single number)
+    newBackLink = {
+      // In V1, field order is index, checksum, txHash
+      // and index is a single number value, not an array
+      index: data.index || (data.indexes && data.indexes.length > 0 ? data.indexes[0] : 0),
+      checksum: data.checksum,
+      txHash: outPoint.txHash,
+    };
+  } else {
+    // V2 format: Use indexes field (array of numbers)
+    newBackLink = {
+      // In V2, field order is indexes, checksum, txHash
+      // and indexes is an array of numbers
+      indexes: data.indexes || (data.index ? [data.index] : []),
+      checksum: data.checksum,
+      txHash: outPoint.txHash,
+    };
+  }
+  
+  // Update backlinks - add the new one to the existing backlinks array
+  const backLinks = [...(data.backLinks || []), newBackLink];
+  
+  // Define output data based on version
+  let outputData: Uint8Array;
+  
+  if (version === ProtocolVersion.V1) {
+    // In V1, index is a single number, not an array
+    // The first witness index is used (V1 can only reference one witness)
     outputData = CKBFSData.pack({
-      index: [contentStartIndex],
+      index: witnessIndices[0], // Use only the first index as a number
       checksum: contentChecksum,
       contentType: data.contentType,
       filename: data.filename,
       backLinks,
-    }, version);
+    }, ProtocolVersion.V1); // Explicitly use V1 for packing
   } else {
-    // In V2, use all the indices where content is placed
+    // In V2, indexes is an array of witness indices
     outputData = CKBFSData.pack({
       indexes: witnessIndices,
       checksum: contentChecksum,
       contentType: data.contentType,
       filename: data.filename,
       backLinks,
-    }, version);
+    }, ProtocolVersion.V2); // Explicitly use V2 for packing
   }
   
   // Pack the original data to get its size - use the appropriate version
   const originalData = CKBFSData.pack(data, version);
   const originalDataSize = originalData.length;
   
-  // Get sizes
+  // Get sizes and calculate capacity requirements
   const newDataSize = outputData.length;
-  const dataSizeDiff = newDataSize - originalDataSize;
   
-  // Calculate the additional capacity needed (in shannons)
-  // CKB requires 1 shannon per byte of data
-  const additionalCapacity = BigInt(Math.max(0, dataSizeDiff)) * 100000000n;
+  // Calculate the required capacity for the output cell
+  // This accounts for: 
+  // 1. The output data size
+  // 2. The type script's occupied size
+  // 3. The lock script's occupied size
+  // 4. A constant of 8 bytes (for header overhead)
+  const ckbfsCellSize = BigInt(outputData.length + type.occupiedSize + lock.occupiedSize + 8) * 100000000n;
   
-  // Add the additional capacity to the original cell capacity
-  console.log(`Original capacity: ${capacity}, Additional needed: ${additionalCapacity}, Data size diff: ${dataSizeDiff}, Version: ${version}`);
-  const outputCapacity = capacity + additionalCapacity;
+  console.log(`Original capacity: ${capacity}, Calculated size: ${ckbfsCellSize}, Data size: ${outputData.length}`);
+  
+  // Use the maximum value between calculated size and original capacity
+  // to ensure we have enough capacity but don't decrease capacity unnecessarily
+  const outputCapacity = ckbfsCellSize > capacity ? ckbfsCellSize : capacity;
 
   // Create initial transaction with the CKBFS cell input
   const tx = Transaction.from({
@@ -388,7 +400,8 @@ export async function createAppendTransaction(
   const address = await signer.getRecommendedAddressObj();
   
   // If we need more capacity than the original cell had, add additional inputs
-  if (additionalCapacity > 0n) {
+  if (outputCapacity > capacity) {
+    console.log(`Need additional capacity: ${outputCapacity - capacity} shannons`);
     // Add more inputs to cover the increased capacity
     await tx.completeInputsByCapacity(signer);
   }

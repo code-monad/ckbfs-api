@@ -10,9 +10,10 @@ import { CKBFS_HEADER } from './molecule';
  * @param version Optional version byte (default is 0)
  * @returns Uint8Array containing the witness data
  */
-export function createCKBFSWitness(content: Uint8Array, version: number = 0): Uint8Array {
+export function createCKBFSWitness(content: Uint8Array): Uint8Array {
   // Create witness with CKBFS header, version byte, and content
-  const versionByte = new Uint8Array([version]);
+  // Version byte must always be 0x00 per protocol
+  const versionByte = new Uint8Array([0]);
   return Buffer.concat([CKBFS_HEADER, versionByte, content]);
 }
 
@@ -22,10 +23,10 @@ export function createCKBFSWitness(content: Uint8Array, version: number = 0): Ui
  * @param version Optional version byte (default is 0)
  * @returns Uint8Array containing the witness data
  */
-export function createTextCKBFSWitness(text: string, version: number = 0): Uint8Array {
+export function createTextCKBFSWitness(text: string): Uint8Array {
   const textEncoder = new TextEncoder();
   const contentBytes = textEncoder.encode(text);
-  return createCKBFSWitness(contentBytes, version);
+  return createCKBFSWitness(contentBytes);
 }
 
 /**
@@ -71,6 +72,6 @@ export function isCKBFSWitness(witness: Uint8Array): boolean {
  * @param version Optional version byte (default is 0)
  * @returns Array of Uint8Array witnesses
  */
-export function createChunkedCKBFSWitnesses(contentChunks: Uint8Array[], version: number = 0): Uint8Array[] {
-  return contentChunks.map(chunk => createCKBFSWitness(chunk, version));
+export function createChunkedCKBFSWitnesses(contentChunks: Uint8Array[]): Uint8Array[] {
+  return contentChunks.map(chunk => createCKBFSWitness(chunk));
 } 

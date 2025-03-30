@@ -1,0 +1,24 @@
+// Create CKBFS cell output data based on version
+let outputData: Uint8Array;
+
+if (version === ProtocolVersion.V1) {
+  // V1 format: Single index field (a single number, not an array)
+  // For V1, use the first index where content is placed
+  outputData = CKBFSData.pack({
+    index: contentStartIndex,
+    checksum,
+    contentType: textEncoder.encode(contentType),
+    filename: textEncoder.encode(filename),
+    backLinks: [],
+  }, version);
+} else {
+  // V2 format: Multiple indexes (array of numbers)
+  // For V2, use all the indices where content is placed
+  outputData = CKBFSData.pack({
+    indexes: witnessIndices,
+    checksum,
+    contentType: textEncoder.encode(contentType),
+    filename: textEncoder.encode(filename),
+    backLinks: [],
+  }, version);
+} 
