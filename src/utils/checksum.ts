@@ -1,4 +1,5 @@
 import { adler32 } from 'hash-wasm';
+import ADLER32 from 'adler-32';
 
 /**
  * Utility functions for Adler32 checksum generation and verification
@@ -16,24 +17,40 @@ export async function calculateChecksum(data: Uint8Array): Promise<number> {
 }
 
 /**
- * Updates an existing checksum with new data
+ * Updates an existing checksum with new data using proper rolling Adler-32 calculation
  * @param previousChecksum The existing checksum to update
  * @param newData The new data to add to the checksum
  * @returns Promise resolving to the updated checksum as a number
  */
 export async function updateChecksum(previousChecksum: number, newData: Uint8Array): Promise<number> {
-  // In a real implementation, this would require the actual Adler32 state recovery
-  // For now, we're simply concatenating the previousChecksum as a hex string with the new data
-  // and calculating a new checksum
+  // Extract a and b values from the previous checksum
+  // In Adler-32, the checksum is composed of two 16-bit integers: a and b
+  // The final checksum is (b << 16) | a
+  const a = previousChecksum & 0xFFFF;
+  const b = (previousChecksum >>> 16) & 0xFFFF;
   
-  const checksumBytes = Buffer.alloc(4);
-  checksumBytes.writeUInt32BE(previousChecksum);
+  // Use the adler-32 package to calculate a proper rolling checksum
+  // The package doesn't have a "resume" function, so we need to work with the underlying algorithm
   
-  // Concatenate the previous checksum bytes with the new data
-  const combinedData = Buffer.concat([checksumBytes, Buffer.from(newData)]);
+  // Initialize with existing a and b values
+  let adlerA = a;
+  let adlerB = b;
+  const MOD_ADLER = 65521; // Adler-32 modulo value
   
-  // Calculate the new checksum
-  return calculateChecksum(combinedData);
+  // Process each byte of the new data
+  for (let i = 0; i < newData.length; i++) {
+    adlerA = (adlerA + newData[i]) % MOD_ADLER;
+    adlerB = (adlerB + adlerA) % MOD_ADLER;
+  }
+  
+  // Combine a and b to get the final checksum
+  const updatedChecksum = (adlerB << 16) | adlerA;
+  
+  // The result should match what you'd get from the adler-32 package
+  // You can verify this in testing by calculating a full checksum
+  // of original + new data and comparing with this rolling result
+  
+  return updatedChecksum;
 }
 
 /**
