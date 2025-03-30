@@ -84,8 +84,8 @@ export type CKBFSDataType = {
   index?: number;
   indexes?: number[];
   checksum: number;
-  contentType: Uint8Array;
-  filename: Uint8Array;
+  contentType: string;
+  filename: string;
   backLinks: BackLinkType[];
 };
 
@@ -133,8 +133,8 @@ export const CKBFSData = {
       return CKBFSDataV1.pack({
         index: getIndex(data),
         checksum: data.checksum,
-        contentType: data.contentType,
-        filename: data.filename,
+        contentType: ccc.bytesFrom(data.contentType, 'utf8'),
+        filename: ccc.bytesFrom(data.filename, 'utf8'),
         backLinks: data.backLinks.map(bl => {
           // Ensure txHash is in proper format for molecule encoding
           const txHash = typeof bl.txHash === 'string' 
@@ -153,8 +153,8 @@ export const CKBFSData = {
       return CKBFSDataV2.pack({
         indexes: getIndexes(data),
         checksum: data.checksum,
-        contentType: data.contentType,
-        filename: data.filename,
+        contentType: ccc.bytesFrom(data.contentType, 'utf8'),
+        filename: ccc.bytesFrom(data.filename, 'utf8'),
         backLinks: data.backLinks.map(bl => {
           // Ensure txHash is in proper format for molecule encoding
           const txHash = typeof bl.txHash === 'string' 
@@ -177,8 +177,8 @@ export const CKBFSData = {
         return {
           index: unpacked.index,
           checksum: unpacked.checksum,
-          contentType: new Uint8Array(Buffer.from(unpacked.contentType)),
-          filename: new Uint8Array(Buffer.from(unpacked.filename)),
+          contentType: ccc.bytesTo(unpacked.contentType, 'utf8'),
+          filename: ccc.bytesTo(unpacked.filename, 'utf8'),
           backLinks: unpacked.backLinks.map(bl => ({
             index: bl.index,
             checksum: bl.checksum,
@@ -191,8 +191,8 @@ export const CKBFSData = {
         return {
           indexes: unpacked.indexes,
           checksum: unpacked.checksum,
-          contentType: new Uint8Array(Buffer.from(unpacked.contentType)),
-          filename: new Uint8Array(Buffer.from(unpacked.filename)),
+          contentType: ccc.bytesTo(unpacked.contentType, 'utf8'),
+          filename: ccc.bytesTo(unpacked.filename, 'utf8'),
           backLinks: unpacked.backLinks.map(bl => ({
             indexes: bl.indexes,
             checksum: bl.checksum,

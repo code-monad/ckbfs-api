@@ -148,8 +148,8 @@ export async function createPublishTransaction(
     outputData = CKBFSData.pack({
       index: contentStartIndex,
       checksum,
-      contentType: textEncoder.encode(contentType),
-      filename: textEncoder.encode(filename),
+      contentType: contentType,
+      filename: filename,
       backLinks: [],
     }, version);
   } else {
@@ -158,8 +158,8 @@ export async function createPublishTransaction(
     outputData = CKBFSData.pack({
       indexes: witnessIndices,
       checksum,
-      contentType: textEncoder.encode(contentType),
-      filename: textEncoder.encode(filename),
+      contentType,
+      filename,
       backLinks: [],
     }, version);
   }
