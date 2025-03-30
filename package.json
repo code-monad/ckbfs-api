@@ -14,7 +14,8 @@
     "test": "jest",
     "example": "ts-node examples/index.ts",
     "example:publish": "ts-node examples/publish.ts",
-    "example:append": "ts-node examples/append.ts"
+    "example:append": "ts-node examples/append.ts",
+    "example:retrieve": "ts-node examples/retrieve.ts"
   },
   "keywords": [
     "ckb",
