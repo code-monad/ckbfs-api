@@ -1,5 +1,5 @@
 import { CKBFS, NetworkType, ProtocolVersion, CKBFSDataType, extractCKBFSWitnessContent, isCKBFSWitness, CKBFSData } from '../src/index';
-import { Script, ClientPublicTestnet, Transaction } from "@ckb-ccc/core";
+import { Script, ClientPublicTestnet, Transaction, ccc } from "@ckb-ccc/core";
 
 // Replace with your actual private key
 const privateKey = process.env.CKB_PRIVATE_KEY || 'your-private-key-here';
@@ -77,25 +77,30 @@ async function getCellInfoFromTransaction(txHash: string): Promise<{
     // Parse the output data as CKBFS data
     // First remove 0x prefix if present
     const rawData = outputData.startsWith('0x') 
-      ? Buffer.from(outputData.slice(2), 'hex') 
+      ? ccc.bytesFrom(outputData.slice(2), 'hex')
       : Buffer.from(outputData, 'hex');
+    
+    // Actually unpack the raw data using CKBFSData.unpack
+    // Use the same protocol version as configured in the SDK
+    const version = ProtocolVersion.V2; // Use V2 as configured in SDK initialization
+    console.log(`Using protocol version ${version} for unpacking cell data`);
+    
+    let ckbfsData: CKBFSDataType;
+    try {
+      ckbfsData = CKBFSData.unpack(rawData, version);
       
-    // For demonstration purposes, we'll manually create a CKBFSDataType object
-    // In a real app, you would properly decode the rawData from molecule format
-    const sampleDataFields = {
-      index: [1],
-      checksum: 12345,
-      contentType: new TextEncoder().encode('text/plain'),
-      filename: new TextEncoder().encode('example.txt'),
-      backLinks: []
-    };
-    
-    // Use this as our data
-    const ckbfsData: CKBFSDataType = sampleDataFields;
-    
-    console.log(`CKBFS data processed`);
-    console.log(`Using filename: ${new TextDecoder().decode(ckbfsData.filename)}`);
-    console.log(`Using content type: ${new TextDecoder().decode(ckbfsData.contentType)}`);
+      // Log the actual cell data for transparency
+      console.log('Successfully unpacked CKBFS cell data:');
+      console.log(`- Checksum: ${ckbfsData.checksum}`);
+      console.log(`- File: ${ckbfsData.filename}`);
+      console.log(`- Content Type: ${ckbfsData.contentType}`);
+      console.log(`- Index: ${ckbfsData.index}`);
+      console.log(`- Indexes: ${ckbfsData.indexes}`);
+      console.log(`- Backlinks count: ${ckbfsData.backLinks?.length || 0}`);
+    } catch (error) {
+      console.error('Error unpacking CKBFS data:', error);
+      throw new Error(`Failed to unpack CKBFS data: ${error}`);
+    }
     
     return {
       outPoint: {
@@ -110,42 +115,8 @@ async function getCellInfoFromTransaction(txHash: string): Promise<{
   } catch (error) {
     console.error('Error retrieving transaction data:', error);
     
-    // Fallback to simulated data for demonstration purposes
-    console.warn('FALLBACK: Using simulated data for demonstration');
-    
-    // Get lock script for this account
-    const lock = await ckbfs.getLock();
-    
-    // Get CKBFS script config
-    const config = ckbfs.getCKBFSConfig();
-    
-    // Create sample data for demonstration
-    const sampleData: CKBFSDataType = {
-      index: [1],
-      checksum: 12345, // Sample checksum number
-      contentType: new TextEncoder().encode('text/plain'),
-      filename: new TextEncoder().encode('example.txt'),
-      backLinks: []
-    };
-    
-    // Create the type script
-    const typeArgs = '0x3cc03661013140855e756c032ce83bc270a7ca3f1f3b76ec21a8ea0155ac3a7c';
-    const typeScript = new Script(
-      ensureHexPrefix(config.codeHash),
-      config.hashType as any,
-      typeArgs
-    );
-    
-    return {
-      outPoint: {
-        txHash,
-        index: 0
-      },
-      type: typeScript,
-      lock,
-      capacity: 200n * 100000000n,
-      data: sampleData
-    };
+    // If we can't get or parse the real data, we should fail - not use mock data
+    throw new Error(`Failed to retrieve or parse cell data: ${error}`);
   }
 }
 
