@@ -22,7 +22,9 @@ import {
   writeFile,
   getContentType,
   splitFileIntoChunks,
-  combineChunksToFile
+  combineChunksToFile,
+  getFileContentFromChain,
+  saveFileFromChain
 } from './utils/file';
 import {
   createCKBFSWitness,
@@ -323,6 +325,8 @@ export {
   getContentType,
   splitFileIntoChunks,
   combineChunksToFile,
+  getFileContentFromChain,
+  saveFileFromChain,
   
   // Witness utilities
   createCKBFSWitness,
