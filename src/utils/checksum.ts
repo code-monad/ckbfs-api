@@ -44,11 +44,16 @@ export async function updateChecksum(previousChecksum: number, newData: Uint8Arr
   }
   
   // Combine a and b to get the final checksum
-  const updatedChecksum = (adlerB << 16) | adlerA;
+  // Use a Uint32Array to ensure we get a proper unsigned 32-bit integer
+  const buffer = new ArrayBuffer(4);
+  const view = new DataView(buffer);
+  view.setUint16(0, adlerA, true); // Set lower 16 bits (little endian)
+  view.setUint16(2, adlerB, true); // Set upper 16 bits (little endian)
   
-  // The result should match what you'd get from the adler-32 package
-  // You can verify this in testing by calculating a full checksum
-  // of original + new data and comparing with this rolling result
+  // Read as an unsigned 32-bit integer
+  const updatedChecksum = view.getUint32(0, true);
+  
+  console.log(`Updated checksum from ${previousChecksum} to ${updatedChecksum} for appended content`);
   
   return updatedChecksum;
 }
