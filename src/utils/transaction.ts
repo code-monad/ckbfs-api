@@ -1,4 +1,4 @@
-import { ccc, Transaction, Script, Signer } from "@ckb-ccc/core";
+import { ccc, Transaction, Script, Signer, TransactionLike, CellInput, AddressLike, ScriptLike } from "@ckb-ccc/core";
 import { calculateChecksum, updateChecksum } from './checksum';
 import { CKBFSData, BackLinkType, CKBFSDataType } from './molecule';
 import { createChunkedCKBFSWitnesses } from './witness';
@@ -31,6 +31,7 @@ export interface CKBFSCellOptions {
  * Options for publishing a file to CKBFS
  */
 export interface PublishOptions extends CKBFSCellOptions {
+  skeleton?: TransactionLike,
   contentChunks: Uint8Array[];
   feeRate?: number;
 }
@@ -39,6 +40,7 @@ export interface PublishOptions extends CKBFSCellOptions {
  * Options for appending content to a CKBFS file
  */
 export interface AppendOptions {
+  skeleton?: TransactionLike,
   ckbfsCell: {
     outPoint: { txHash: string; index: number };
     data: CKBFSDataType;
@@ -48,6 +50,7 @@ export interface AppendOptions {
   };
   contentChunks: Uint8Array[];
   feeRate?: number;
+  changeTo?: ScriptLike;
   network?: NetworkType;
   version?: string;
 }
@@ -360,8 +363,46 @@ export async function createAppendTransaction(
   // to ensure we have enough capacity but don't decrease capacity unnecessarily
   const outputCapacity = ckbfsCellSize > capacity ? ckbfsCellSize : capacity;
 
+  let initSkeleton = async function(skeleton: TransactionLike){
+    let tx = Transaction.from(skeleton);
+    
+    // Add the CKBFS dep group cell dependency
+    tx.addCellDeps({
+      outPoint: {
+        txHash: ensureHexPrefix(config.depTxHash),
+        index: config.depIndex || 0,
+      },
+      depType: "depGroup"
+    });
+
+    let outputIndex = await tx.addOutput(
+      {
+        lock,
+        type,
+        capacity: outputCapacity,
+      }
+    );
+
+    tx.inputs.push(CellInput.from({
+      previousOutput: {
+        txHash: outPoint.txHash,
+        index: outPoint.index,
+      },
+      since: "0x0",
+    }))
+
+    const witnesseIndex = Math.max(tx.witnesses.length, 1); // 0 is reserved for secp256k1
+    for (let i = 0; i < ckbfsWitnesses.length; i++) {
+      await tx.setWitnessAt(witnesseIndex + i, `0x${Buffer.from(ckbfsWitnesses[i]).toString('hex')}`)
+    }
+
+    tx.setOutputDataAt(outputIndex, outputData)
+
+    return tx;
+  }
+
   // Create initial transaction with the CKBFS cell input
-  const tx = Transaction.from({
+  const tx = options.skeleton? await initSkeleton(options.skeleton) : Transaction.from({
     inputs: [
       {
         previousOutput: {
@@ -407,7 +448,11 @@ export async function createAppendTransaction(
   }
   
   // Complete fee
-  await tx.completeFeeChangeToLock(signer, lock || address.script, feeRate || 2000);
+  if (options.changeTo){
+    await tx.completeFeeChangeToLock(signer, options.changeTo, feeRate || 2000);
+  } else {
+    await tx.completeFeeChangeToLock(signer, lock || address.script, feeRate || 2000);
+  }
   
   return tx;
 }
