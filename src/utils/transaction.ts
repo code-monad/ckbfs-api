@@ -280,10 +280,13 @@ export async function createAppendTransaction(
   const contentChecksum = await updateChecksum(data.checksum, combinedContent);
   console.log(`Updated checksum from ${data.checksum} to ${contentChecksum} for appended content`);
   
+  // Get the recommended address to ensure lock script cell deps are included
+  const address = await signer.getRecommendedAddressObj();
+
   // Calculate the actual witness indices where our content is placed
-  // Index 0 is reserved for the secp256k1 witness for signing
-  // So our CKBFS data starts at index 1
-  const contentStartIndex = 1;
+  // CKBFS data starts at index 1 if signer's lock script is the same as ckbfs's lock script
+  // else CKBFS data starts at index 0
+  const contentStartIndex = address.script.hash() === lock.hash() ? 1 : 0;
   const witnessIndices = Array.from(
     { length: contentChunks.length }, 
     (_, i) => contentStartIndex + i
@@ -393,9 +396,6 @@ export async function createAppendTransaction(
     depType: "depGroup"
   });
   
-  // Get the recommended address to ensure lock script cell deps are included
-  const address = await signer.getRecommendedAddressObj();
-
   const inputsBefore = tx.inputs.length;
   // If we need more capacity than the original cell had, add additional inputs
   if (outputCapacity > capacity) {
