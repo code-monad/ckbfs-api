@@ -378,15 +378,12 @@ export async function createAppendTransaction(
         capacity: outputCapacity,
       }
     ],
-    witnesses: [
-      [], // Empty secp witness for signing
-      ...ckbfsWitnesses.map(w => `0x${Buffer.from(w).toString('hex')}`),
-    ],
     outputsData: [
       outputData,
     ]
   });
-  
+
+
   // Add the CKBFS dep group cell dependency
   tx.addCellDeps({
     outPoint: {
@@ -398,16 +395,32 @@ export async function createAppendTransaction(
   
   // Get the recommended address to ensure lock script cell deps are included
   const address = await signer.getRecommendedAddressObj();
-  
+
+  const inputsBefore = tx.inputs.length;
   // If we need more capacity than the original cell had, add additional inputs
   if (outputCapacity > capacity) {
     console.log(`Need additional capacity: ${outputCapacity - capacity} shannons`);
     // Add more inputs to cover the increased capacity
     await tx.completeInputsByCapacity(signer);
   }
-  
+
+  const witnesses: any = []
+  // add empty witness for signer if ckbfs's lock is the same as signer's lock
+  if(address.script.hash() === lock.hash()) {
+    witnesses.push('0x')
+  }
+  // add ckbfs witnesses
+  witnesses.push(...ckbfsWitnesses.map(w => `0x${Buffer.from(w).toString('hex')}`))
+
+  // Add empty witnesses for signer's input
+  // This is to ensure that the transaction is valid and can be signed
+  for(let i = inputsBefore; i < tx.inputs.length; i++) {
+    witnesses.push('0x')
+  }
+  tx.witnesses = witnesses
+
   // Complete fee
-  await tx.completeFeeChangeToLock(signer, lock || address.script, feeRate || 2000);
+  await tx.completeFeeChangeToLock(signer, address.script, feeRate || 2000);
   
   return tx;
 }
