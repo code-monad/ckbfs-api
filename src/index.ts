@@ -7,10 +7,10 @@ import {
 } from './utils/checksum';
 import {
   createCKBFSCell,
-  createPublishTransaction,
-  createAppendTransaction,
-  publishCKBFS,
-  appendCKBFS,
+  createPublishTransaction as utilCreatePublishTransaction,
+  createAppendTransaction as utilCreateAppendTransaction,
+  publishCKBFS as utilPublishCKBFS,
+  appendCKBFS as utilAppendCKBFS,
   CKBFSCellOptions,
   PublishOptions,
   AppendOptions
@@ -56,6 +56,10 @@ import {
   getCKBFSScriptConfig,
   CKBFSScriptConfig
 } from './utils/constants';
+import { ensureHexPrefix } from './utils/transaction';
+
+// Helper to encode string to Uint8Array
+const textEncoder = new TextEncoder();
 
 /**
  * Custom options for file publishing and appending
@@ -69,6 +73,19 @@ export interface FileOptions {
   version?: string;
   useTypeID?: boolean;
 }
+
+/**
+ * Options required when publishing content directly (string or Uint8Array)
+ */
+export type PublishContentOptions = Omit<FileOptions, 'capacity' | 'contentType' | 'filename'> & 
+  Required<Pick<FileOptions, 'contentType' | 'filename'>> & 
+  { capacity?: bigint };
+
+/**
+ * Options required when appending content directly (string or Uint8Array)
+ */
+export type AppendContentOptions = Omit<FileOptions, 'contentType' | 'filename' | 'capacity'> & 
+  { capacity?: bigint };
 
 /**
  * Configuration options for the CKBFS SDK
@@ -176,8 +193,8 @@ export class CKBFS {
     const pathParts = filePath.split(/[\\\/]/);
     const filename = options.filename || pathParts[pathParts.length - 1];
     
-    // Create and sign the transaction
-    const tx = await publishCKBFS(this.signer, {
+    // Create and sign the transaction using the utility function
+    const tx = await utilPublishCKBFS(this.signer, {
       contentChunks,
       contentType,
       filename,
@@ -189,16 +206,53 @@ export class CKBFS {
       useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID
     });
 
-    console.log('tx', tx.stringify());
+    console.log('Publish file tx:', tx.stringify());
     
     // Send the transaction
     const txHash = await this.signer.sendTransaction(tx);
     
-    return txHash;
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Publishes content (string or Uint8Array) directly to CKBFS
+   * @param content The content string or byte array to publish
+   * @param options Options for publishing the content (contentType and filename are required)
+   * @returns Promise resolving to the transaction hash
+   */
+  async publishContent(content: string | Uint8Array, options: PublishContentOptions): Promise<string> {
+    const contentBytes = typeof content === 'string' ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    const lock = await this.getLock();
+
+    // Use provided contentType and filename (required)
+    const { contentType, filename } = options;
+
+    const tx = await utilPublishCKBFS(this.signer, {
+      contentChunks,
+      contentType,
+      filename,
+      lock,
+      capacity: options.capacity,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: options.version || this.version,
+      useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID
+    });
+
+    console.log('Publish content tx:', tx.stringify());
+
+    const txHash = await this.signer.sendTransaction(tx);
+    return ensureHexPrefix(txHash);
   }
   
   /**
-   * Appends content to an existing CKBFS file
+   * Appends content from a file to an existing CKBFS file
    * @param filePath The path to the file containing the content to append
    * @param ckbfsCell The CKBFS cell to append to
    * @param options Additional options for the append operation
@@ -217,19 +271,55 @@ export class CKBFS {
       contentChunks.push(fileContent.slice(i, i + this.chunkSize));
     }
     
-    // Create and sign the transaction
-    const tx = await appendCKBFS(this.signer, {
+    // Create and sign the transaction using the utility function
+    const tx = await utilAppendCKBFS(this.signer, {
       ckbfsCell,
       contentChunks,
       feeRate: options.feeRate,
       network: options.network || this.network,
       version: options.version || this.version
     });
+
+    console.log('Append file tx:', tx.stringify());
     
     // Send the transaction
     const txHash = await this.signer.sendTransaction(tx);
     
-    return txHash;
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Appends content (string or Uint8Array) directly to an existing CKBFS file
+   * @param content The content string or byte array to append
+   * @param ckbfsCell The CKBFS cell to append to
+   * @param options Additional options for the append operation
+   * @returns Promise resolving to the transaction hash
+   */
+  async appendContent(
+    content: string | Uint8Array,
+    ckbfsCell: AppendOptions['ckbfsCell'],
+    options: AppendContentOptions = {}
+  ): Promise<string> {
+    const contentBytes = typeof content === 'string' ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    const tx = await utilAppendCKBFS(this.signer, {
+      ckbfsCell,
+      contentChunks,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: options.version || this.version
+      // No useTypeID option for append
+    });
+
+    console.log('Append content tx:', tx.stringify());
+
+    const txHash = await this.signer.sendTransaction(tx);
+    return ensureHexPrefix(txHash);
   }
   
   /**
@@ -257,8 +347,40 @@ export class CKBFS {
     const pathParts = filePath.split(/[\\\/]/);
     const filename = options.filename || pathParts[pathParts.length - 1];
     
-    // Create the transaction
-    return createPublishTransaction(this.signer, {
+    // Create the transaction using the utility function
+    return utilCreatePublishTransaction(this.signer, {
+      contentChunks,
+      contentType,
+      filename,
+      lock,
+      capacity: options.capacity,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: options.version || this.version,
+      useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID
+    });
+  }
+
+  /**
+   * Creates a new transaction for publishing content (string or Uint8Array) directly, but doesn't sign or send it
+   * @param content The content string or byte array to publish
+   * @param options Options for publishing the content (contentType and filename are required)
+   * @returns Promise resolving to the unsigned transaction
+   */
+  async createPublishContentTransaction(content: string | Uint8Array, options: PublishContentOptions): Promise<Transaction> {
+    const contentBytes = typeof content === 'string' ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    const lock = await this.getLock();
+
+    // Use provided contentType and filename (required)
+    const { contentType, filename } = options;
+
+    return utilCreatePublishTransaction(this.signer, {
       contentChunks,
       contentType,
       filename,
@@ -272,7 +394,7 @@ export class CKBFS {
   }
   
   /**
-   * Creates a new transaction for appending content but doesn't sign or send it
+   * Creates a new transaction for appending content from a file but doesn't sign or send it
    * @param filePath The path to the file containing the content to append
    * @param ckbfsCell The CKBFS cell to append to
    * @param options Additional options for the append operation
@@ -291,13 +413,42 @@ export class CKBFS {
       contentChunks.push(fileContent.slice(i, i + this.chunkSize));
     }
     
-    // Create the transaction
-    return createAppendTransaction(this.signer, {
+    // Create the transaction using the utility function
+    return utilCreateAppendTransaction(this.signer, {
       ckbfsCell,
       contentChunks,
       feeRate: options.feeRate,
       network: options.network || this.network,
       version: options.version || this.version
+    });
+  }
+
+  /**
+   * Creates a new transaction for appending content (string or Uint8Array) directly, but doesn't sign or send it
+   * @param content The content string or byte array to append
+   * @param ckbfsCell The CKBFS cell to append to
+   * @param options Additional options for the append operation
+   * @returns Promise resolving to the unsigned transaction
+   */
+  async createAppendContentTransaction(
+    content: string | Uint8Array,
+    ckbfsCell: AppendOptions['ckbfsCell'],
+    options: AppendContentOptions = {}
+  ): Promise<Transaction> {
+    const contentBytes = typeof content === 'string' ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    return utilCreateAppendTransaction(this.signer, {
+      ckbfsCell,
+      contentChunks,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: options.version || this.version
+      // No useTypeID option for append
     });
   }
 }
@@ -310,12 +461,12 @@ export {
   updateChecksum,
   verifyWitnessChecksum,
   
-  // Transaction utilities
+  // Transaction utilities (Exporting original names from transaction.ts)
   createCKBFSCell,
-  createPublishTransaction,
-  createAppendTransaction,
-  publishCKBFS,
-  appendCKBFS,
+  utilCreatePublishTransaction as createPublishTransaction,
+  utilCreateAppendTransaction as createAppendTransaction,
+  utilPublishCKBFS as publishCKBFS,
+  utilAppendCKBFS as appendCKBFS,
   
   // File utilities
   readFile,

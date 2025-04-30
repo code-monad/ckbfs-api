@@ -1,4 +1,4 @@
-import { CKBFS, NetworkType, ProtocolVersion } from '../src/index';
+import { CKBFS, NetworkType, ProtocolVersion, PublishContentOptions } from '../src/index';
 
 // Replace with your actual private key
 const privateKey = process.env.CKB_PRIVATE_KEY || 'your-private-key-here';
@@ -53,6 +53,38 @@ async function publishExample() {
 }
 
 /**
+ * Example of publishing content directly (string) to CKBFS
+ */
+async function publishContentExample() {
+  try {
+    // Get address info
+    const address = await ckbfs.getAddress();
+    console.log(`Using address for content publish: ${address.toString()}`);
+    
+    // Define content and options (contentType and filename are required)
+    const content = "Hello CKBFS from direct content!";
+    const options: PublishContentOptions = {
+      contentType: 'text/plain',
+      filename: 'direct_content_example.txt',
+      // You can optionally specify feeRate, network, version, useTypeID
+      // feeRate: 3000 
+    };
+    
+    console.log(`Publishing direct content: "${content}"`);
+    const txHash = await ckbfs.publishContent(content, options);
+    
+    console.log(`Direct content published successfully!`);
+    console.log(`Transaction Hash: ${txHash}`);
+    console.log(`View at: https://pudge.explorer.nervos.org/transaction/${txHash}`);
+    
+    return txHash;
+  } catch (error) {
+    console.error('Error publishing direct content:', error);
+    throw error;
+  }
+}
+
+/**
  * Main function to run the example
  */
 async function main() {
@@ -62,6 +94,8 @@ async function main() {
   
   try {
     await publishExample();
+    console.log('----------------------------------');
+    await publishContentExample();
     console.log('Example completed successfully!');
     process.exit(0);
   } catch (error) {

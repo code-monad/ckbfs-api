@@ -57,7 +57,7 @@ export interface AppendOptions {
  * @param value The string to ensure is hex prefixed
  * @returns A hex prefixed string
  */
-function ensureHexPrefix(value: string): `0x${string}` {
+export function ensureHexPrefix(value: string): `0x${string}` {
   if (value.startsWith('0x')) {
     return value as `0x${string}`;
   }
