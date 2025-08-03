@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 /**
  * Utility functions for file operations
@@ -20,7 +20,7 @@ export function readFile(filePath: string): Buffer {
  * @returns String containing the file contents
  */
 export function readFileAsText(filePath: string): string {
-  return fs.readFileSync(filePath, 'utf-8');
+  return fs.readFileSync(filePath, "utf-8");
 }
 
 /**
@@ -44,7 +44,7 @@ export function writeFile(filePath: string, data: Buffer | string): void {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
-  
+
   fs.writeFileSync(filePath, data);
 }
 
@@ -55,30 +55,30 @@ export function writeFile(filePath: string, data: Buffer | string): void {
  */
 export function getContentType(filePath: string): string {
   const extension = path.extname(filePath).toLowerCase();
-  
+
   const mimeTypes: { [key: string]: string } = {
-    '.txt': 'text/plain',
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.mp3': 'audio/mpeg',
-    '.mp4': 'video/mp4',
-    '.wav': 'audio/wav',
-    '.xml': 'application/xml',
-    '.zip': 'application/zip',
-    '.md': 'text/markdown',
-    '.markdown': 'text/markdown',
+    ".txt": "text/plain",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".json": "application/json",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".pdf": "application/pdf",
+    ".mp3": "audio/mpeg",
+    ".mp4": "video/mp4",
+    ".wav": "audio/wav",
+    ".xml": "application/xml",
+    ".zip": "application/zip",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
   };
-  
-  return mimeTypes[extension] || 'application/octet-stream';
+
+  return mimeTypes[extension] || "application/octet-stream";
 }
 
 /**
@@ -87,14 +87,17 @@ export function getContentType(filePath: string): string {
  * @param chunkSize The maximum size of each chunk in bytes
  * @returns Array of Uint8Array chunks
  */
-export function splitFileIntoChunks(filePath: string, chunkSize: number): Uint8Array[] {
+export function splitFileIntoChunks(
+  filePath: string,
+  chunkSize: number,
+): Uint8Array[] {
   const fileBuffer = fs.readFileSync(filePath);
   const chunks: Uint8Array[] = [];
-  
+
   for (let i = 0; i < fileBuffer.length; i += chunkSize) {
     chunks.push(new Uint8Array(fileBuffer.slice(i, i + chunkSize)));
   }
-  
+
   return chunks;
 }
 
@@ -103,8 +106,13 @@ export function splitFileIntoChunks(filePath: string, chunkSize: number): Uint8A
  * @param chunks Array of chunks to combine
  * @param outputPath The path to write the combined file to
  */
-export function combineChunksToFile(chunks: Uint8Array[], outputPath: string): void {
-  const combinedBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+export function combineChunksToFile(
+  chunks: Uint8Array[],
+  outputPath: string,
+): void {
+  const combinedBuffer = Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+  );
   writeFile(outputPath, combinedBuffer);
 }
 
@@ -114,17 +122,17 @@ export function combineChunksToFile(chunks: Uint8Array[], outputPath: string): v
  * @returns Decoded string or placeholder on error
  */
 function safelyDecode(buffer: any): string {
-  if (!buffer) return '[Unknown]';
+  if (!buffer) return "[Unknown]";
   try {
     if (buffer instanceof Uint8Array) {
       return new TextDecoder().decode(buffer);
-    } else if (typeof buffer === 'string') {
+    } else if (typeof buffer === "string") {
       return buffer;
     } else {
       return `[Buffer: ${buffer.toString()}]`;
     }
   } catch (e) {
-    return '[Decode Error]';
+    return "[Decode Error]";
   }
 }
 
@@ -138,24 +146,26 @@ function safelyDecode(buffer: any): string {
 export async function getFileContentFromChain(
   client: any,
   outPoint: { txHash: string; index: number },
-  ckbfsData: any
+  ckbfsData: any,
 ): Promise<Uint8Array> {
   console.log(`Retrieving file: ${safelyDecode(ckbfsData.filename)}`);
   console.log(`Content type: ${safelyDecode(ckbfsData.contentType)}`);
-  
+
   // Prepare to collect all content pieces
   const contentPieces: Uint8Array[] = [];
   let currentData = ckbfsData;
   let currentOutPoint = outPoint;
-  
+
   // Process the current transaction first
   const tx = await client.getTransaction(currentOutPoint.txHash);
   if (!tx || !tx.transaction) {
     throw new Error(`Transaction ${currentOutPoint.txHash} not found`);
   }
-  
+
   // Get content from witnesses
-  const indexes = currentData.indexes || (currentData.index !== undefined ? [currentData.index] : []);
+  const indexes =
+    currentData.indexes ||
+    (currentData.index !== undefined ? [currentData.index] : []);
   if (indexes.length > 0) {
     // Get content from each witness index
     for (const idx of indexes) {
@@ -163,12 +173,12 @@ export async function getFileContentFromChain(
         console.warn(`Witness index ${idx} out of range`);
         continue;
       }
-      
+
       const witnessHex = tx.transaction.witnesses[idx];
-      const witness = Buffer.from(witnessHex.slice(2), 'hex'); // Remove 0x prefix
-      
+      const witness = Buffer.from(witnessHex.slice(2), "hex"); // Remove 0x prefix
+
       // Extract content (skip CKBFS header + version byte)
-      if (witness.length >= 6 && witness.slice(0, 5).toString() === 'CKBFS') {
+      if (witness.length >= 6 && witness.slice(0, 5).toString() === "CKBFS") {
         const content = witness.slice(6);
         contentPieces.unshift(content); // Add to beginning of array (we're going backwards)
       } else {
@@ -176,22 +186,24 @@ export async function getFileContentFromChain(
       }
     }
   }
-  
+
   // Follow backlinks recursively
   if (currentData.backLinks && currentData.backLinks.length > 0) {
     // Process each backlink, from most recent to oldest
     for (let i = currentData.backLinks.length - 1; i >= 0; i--) {
       const backlink = currentData.backLinks[i];
-      
+
       // Get the transaction for this backlink
       const backTx = await client.getTransaction(backlink.txHash);
       if (!backTx || !backTx.transaction) {
         console.warn(`Backlink transaction ${backlink.txHash} not found`);
         continue;
       }
-      
+
       // Get content from backlink witnesses
-      const backIndexes = backlink.indexes || (backlink.index !== undefined ? [backlink.index] : []);
+      const backIndexes =
+        backlink.indexes ||
+        (backlink.index !== undefined ? [backlink.index] : []);
       if (backIndexes.length > 0) {
         // Get content from each witness index
         for (const idx of backIndexes) {
@@ -199,22 +211,27 @@ export async function getFileContentFromChain(
             console.warn(`Backlink witness index ${idx} out of range`);
             continue;
           }
-          
+
           const witnessHex = backTx.transaction.witnesses[idx];
-          const witness = Buffer.from(witnessHex.slice(2), 'hex'); // Remove 0x prefix
-          
+          const witness = Buffer.from(witnessHex.slice(2), "hex"); // Remove 0x prefix
+
           // Extract content (skip CKBFS header + version byte)
-          if (witness.length >= 6 && witness.slice(0, 5).toString() === 'CKBFS') {
+          if (
+            witness.length >= 6 &&
+            witness.slice(0, 5).toString() === "CKBFS"
+          ) {
             const content = witness.slice(6);
             contentPieces.unshift(content); // Add to beginning of array (we're going backwards)
           } else {
-            console.warn(`Backlink witness at index ${idx} is not a valid CKBFS witness`);
+            console.warn(
+              `Backlink witness at index ${idx} is not a valid CKBFS witness`,
+            );
           }
         }
       }
     }
   }
-  
+
   // Combine all content pieces
   return Buffer.concat(contentPieces);
 }
@@ -229,24 +246,186 @@ export async function getFileContentFromChain(
 export function saveFileFromChain(
   content: Uint8Array,
   ckbfsData: any,
-  outputPath?: string
+  outputPath?: string,
 ): string {
   // Get filename from CKBFS data
   const filename = safelyDecode(ckbfsData.filename);
-  
+
   // Determine output path
   const filePath = outputPath || filename;
-  
+
   // Ensure directory exists
   const directory = path.dirname(filePath);
   if (!fs.existsSync(directory)) {
     fs.mkdirSync(directory, { recursive: true });
   }
-  
+
   // Write file
   fs.writeFileSync(filePath, content);
   console.log(`File saved to: ${filePath}`);
   console.log(`Size: ${content.length} bytes`);
-  
+
   return filePath;
-} 
+}
+
+/**
+ * Decodes content from a single CKBFS witness
+ * @param witnessHex The witness data in hex format (with or without 0x prefix)
+ * @returns Object containing the decoded content and metadata, or null if not a valid CKBFS witness
+ */
+export function decodeWitnessContent(
+  witnessHex: string,
+): { content: Uint8Array; isValid: boolean } | null {
+  try {
+    // Remove 0x prefix if present
+    const hexData = witnessHex.startsWith("0x")
+      ? witnessHex.slice(2)
+      : witnessHex;
+    const witness = Buffer.from(hexData, "hex");
+
+    // Check if it's a valid CKBFS witness
+    if (witness.length < 6) {
+      return null;
+    }
+
+    // Check CKBFS header
+    const header = witness.slice(0, 5).toString();
+    if (header !== "CKBFS") {
+      return null;
+    }
+
+    // Extract content (skip CKBFS header + version byte)
+    const content = witness.slice(6);
+
+    return {
+      content,
+      isValid: true,
+    };
+  } catch (error) {
+    console.warn("Error decoding witness content:", error);
+    return null;
+  }
+}
+
+/**
+ * Decodes and combines content from multiple CKBFS witnesses
+ * @param witnessHexArray Array of witness data in hex format
+ * @param preserveOrder Whether to preserve the order of witnesses (default: true)
+ * @returns Combined content from all valid CKBFS witnesses
+ */
+export function decodeMultipleWitnessContents(
+  witnessHexArray: string[],
+  preserveOrder: boolean = true,
+): Uint8Array {
+  const contentPieces: Uint8Array[] = [];
+
+  for (let i = 0; i < witnessHexArray.length; i++) {
+    const witnessHex = witnessHexArray[i];
+    const decoded = decodeWitnessContent(witnessHex);
+
+    if (decoded && decoded.isValid) {
+      if (preserveOrder) {
+        contentPieces.push(decoded.content);
+      } else {
+        contentPieces.unshift(decoded.content);
+      }
+    } else {
+      console.warn(`Witness at index ${i} is not a valid CKBFS witness`);
+    }
+  }
+
+  return Buffer.concat(contentPieces);
+}
+
+/**
+ * Extracts complete file content from witnesses using specified indexes
+ * @param witnesses Array of all witnesses from a transaction
+ * @param indexes Array of witness indexes that contain CKBFS content
+ * @returns Combined content from the specified witness indexes
+ */
+export function extractFileFromWitnesses(
+  witnesses: string[],
+  indexes: number[],
+): Uint8Array {
+  const relevantWitnesses: string[] = [];
+
+  for (const idx of indexes) {
+    if (idx >= witnesses.length) {
+      console.warn(
+        `Witness index ${idx} out of range (total witnesses: ${witnesses.length})`,
+      );
+      continue;
+    }
+    relevantWitnesses.push(witnesses[idx]);
+  }
+
+  return decodeMultipleWitnessContents(relevantWitnesses, true);
+}
+
+/**
+ * Decodes file content directly from witness data without blockchain queries
+ * @param witnessData Object containing witness information
+ * @returns Object containing the decoded file content and metadata
+ */
+export function decodeFileFromWitnessData(witnessData: {
+  witnesses: string[];
+  indexes: number[] | number;
+  filename?: string;
+  contentType?: string;
+}): {
+  content: Uint8Array;
+  filename?: string;
+  contentType?: string;
+  size: number;
+} {
+  const { witnesses, indexes, filename, contentType } = witnessData;
+
+  // Normalize indexes to array
+  const indexArray = Array.isArray(indexes) ? indexes : [indexes];
+
+  // Extract content from witnesses
+  const content = extractFileFromWitnesses(witnesses, indexArray);
+
+  return {
+    content,
+    filename,
+    contentType,
+    size: content.length,
+  };
+}
+
+/**
+ * Saves decoded file content directly from witness data
+ * @param witnessData Object containing witness information
+ * @param outputPath Optional path to save the file
+ * @returns The path where the file was saved
+ */
+export function saveFileFromWitnessData(
+  witnessData: {
+    witnesses: string[];
+    indexes: number[] | number;
+    filename?: string;
+    contentType?: string;
+  },
+  outputPath?: string,
+): string {
+  const decoded = decodeFileFromWitnessData(witnessData);
+
+  // Determine output path
+  const filename = decoded.filename || "decoded_file";
+  const filePath = outputPath || filename;
+
+  // Ensure directory exists
+  const directory = path.dirname(filePath);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+
+  // Write file
+  fs.writeFileSync(filePath, decoded.content);
+  console.log(`File saved to: ${filePath}`);
+  console.log(`Size: ${decoded.size} bytes`);
+  console.log(`Content type: ${decoded.contentType || "unknown"}`);
+
+  return filePath;
+}

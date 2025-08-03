@@ -216,13 +216,15 @@ const appendTxHash2 = await ckbfs.appendContent(
 
 ### Retrieving Files
 
+#### Traditional Method (with blockchain queries)
+
 ```typescript
 import { getFileContentFromChain, saveFileFromChain } from '@ckbfs/api';
 import { ClientPublicTestnet } from '@ckb-ccc/core';
 
 const client = new ClientPublicTestnet();
 
-// Get file content from blockchain
+// Get file content from blockchain (follows backlinks automatically)
 const content = await getFileContentFromChain(
   client,
   { txHash: 'transaction-hash', index: 0 },
@@ -231,6 +233,38 @@ const content = await getFileContentFromChain(
 
 // Save to disk
 const savedPath = saveFileFromChain(content, ckbfsData, './downloaded-file.txt');
+```
+
+#### Direct Witness Decoding (new method)
+
+```typescript
+import { 
+  decodeWitnessContent,
+  decodeFileFromWitnessData,
+  saveFileFromWitnessData 
+} from '@ckbfs/api';
+
+// Decode individual witness
+const decoded = decodeWitnessContent(witnessHex);
+if (decoded && decoded.isValid) {
+  console.log(`Content: ${decoded.content.length} bytes`);
+}
+
+// Decode complete file from witness data
+const file = decodeFileFromWitnessData({
+  witnesses: tx.witnesses,
+  indexes: [1, 2, 3], // witness indexes containing content
+  filename: 'example.txt',
+  contentType: 'text/plain'
+});
+
+// Save directly from witness data
+const savedPath = saveFileFromWitnessData({
+  witnesses: tx.witnesses,
+  indexes: [1, 2, 3],
+  filename: 'example.txt',
+  contentType: 'text/plain'
+}, './decoded-file.txt');
 ```
 
 ## Utility Functions
@@ -337,6 +371,9 @@ npm run example:publish
 # Append example (requires existing transaction hash)
 npm run example:append -- --txhash=0x123456...
 
+# Retrieve example (demonstrates new witness decoding APIs)
+npm run example:retrieve -- --txhash=0x123456...
+
 # All examples
 npm run example
 ```
@@ -345,6 +382,7 @@ npm run example
 
 - `CKB_PRIVATE_KEY`: Your CKB private key for examples
 - `PUBLISH_TX_HASH`: Transaction hash for append examples
+- `TARGET_TX_HASH`: Transaction hash for retrieve examples
 
 ## Network Configuration
 

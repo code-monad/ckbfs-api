@@ -1,6 +1,6 @@
 import { molecule, number } from "@ckb-lumos/codec";
 import { blockchain } from "@ckb-lumos/base";
-import { ProtocolVersion } from "./constants";
+import { ProtocolVersion, ProtocolVersionType } from "./constants";
 import { ccc } from "@ckb-ccc/core";
 
 /**
@@ -17,7 +17,7 @@ export const BackLinkV1 = molecule.table(
     checksum: number.Uint32,
     txHash: blockchain.Byte32,
   },
-  ["index", "checksum", "txHash"]
+  ["index", "checksum", "txHash"],
 );
 
 // V2: BackLink has indexes as vector of Uint32
@@ -27,7 +27,7 @@ export const BackLinkV2 = molecule.table(
     checksum: number.Uint32,
     txHash: blockchain.Byte32,
   },
-  ["indexes", "checksum", "txHash"]
+  ["indexes", "checksum", "txHash"],
 );
 
 // Define the BackLinks vector for V1 and V2
@@ -43,7 +43,7 @@ export const CKBFSDataV1 = molecule.table(
     filename: blockchain.Bytes,
     backLinks: BackLinksV1,
   },
-  ["index", "checksum", "contentType", "filename", "backLinks"]
+  ["index", "checksum", "contentType", "filename", "backLinks"],
 );
 
 // V2: CKBFSData has indexes as vector of Uint32
@@ -55,7 +55,7 @@ export const CKBFSDataV2 = molecule.table(
     filename: blockchain.Bytes,
     backLinks: BackLinksV2,
   },
-  ["indexes", "checksum", "contentType", "filename", "backLinks"]
+  ["indexes", "checksum", "contentType", "filename", "backLinks"],
 );
 
 // Type definitions for TypeScript
@@ -92,20 +92,20 @@ export type CKBFSDataType = {
 // Helper function to get indexes array from data
 function getIndexes(data: CKBFSDataType): number[] {
   if (data.indexes) return data.indexes;
-  if (typeof data.index === 'number') return [data.index];
+  if (typeof data.index === "number") return [data.index];
   return [];
 }
 
 // Helper function to get single index from data
 function getIndex(data: CKBFSDataType): number {
-  if (typeof data.index === 'number') return data.index;
+  if (typeof data.index === "number") return data.index;
   if (data.indexes && data.indexes.length > 0) return data.indexes[0];
   return 0;
 }
 
 // Helper function to safely get either index or indexes from BackLinkType for V1
 function getBackLinkIndex(bl: BackLinkType): number {
-  if (typeof bl.index === 'number') {
+  if (typeof bl.index === "number") {
     return bl.index;
   }
   if (Array.isArray(bl.indexes) && bl.indexes.length > 0) {
@@ -119,7 +119,7 @@ function getBackLinkIndexes(bl: BackLinkType): number[] {
   if (Array.isArray(bl.indexes)) {
     return bl.indexes;
   }
-  if (typeof bl.index === 'number') {
+  if (typeof bl.index === "number") {
     return [bl.index];
   }
   return [0];
@@ -127,20 +127,24 @@ function getBackLinkIndexes(bl: BackLinkType): number[] {
 
 // Helper function to get the right CKBFSData based on version
 export const CKBFSData = {
-  pack: (data: CKBFSDataType, version: string = ProtocolVersion.V2): Uint8Array => {
+  pack: (
+    data: CKBFSDataType,
+    version: ProtocolVersionType = ProtocolVersion.V2,
+  ): Uint8Array => {
     if (version === ProtocolVersion.V1) {
       // V1 formatting - uses single index
       return CKBFSDataV1.pack({
         index: getIndex(data),
         checksum: data.checksum,
-        contentType: ccc.bytesFrom(data.contentType, 'utf8'),
-        filename: ccc.bytesFrom(data.filename, 'utf8'),
-        backLinks: data.backLinks.map(bl => {
+        contentType: ccc.bytesFrom(data.contentType, "utf8"),
+        filename: ccc.bytesFrom(data.filename, "utf8"),
+        backLinks: data.backLinks.map((bl) => {
           // Ensure txHash is in proper format for molecule encoding
-          const txHash = typeof bl.txHash === 'string' 
-            ? ccc.bytesFrom(bl.txHash) 
-            : bl.txHash;
-          
+          const txHash =
+            typeof bl.txHash === "string"
+              ? ccc.bytesFrom(bl.txHash)
+              : bl.txHash;
+
           return {
             index: getBackLinkIndex(bl),
             checksum: bl.checksum,
@@ -153,14 +157,12 @@ export const CKBFSData = {
       return CKBFSDataV2.pack({
         indexes: getIndexes(data),
         checksum: data.checksum,
-        contentType: ccc.bytesFrom(data.contentType, 'utf8'),
-        filename: ccc.bytesFrom(data.filename, 'utf8'),
-        backLinks: data.backLinks.map(bl => {
+        contentType: ccc.bytesFrom(data.contentType, "utf8"),
+        filename: ccc.bytesFrom(data.filename, "utf8"),
+        backLinks: data.backLinks.map((bl) => {
           // Ensure txHash is in proper format for molecule encoding
-          const txHash = typeof bl.txHash === 'string' 
-            ? bl.txHash
-            : bl.txHash;
-          
+          const txHash = typeof bl.txHash === "string" ? bl.txHash : bl.txHash;
+
           return {
             indexes: getBackLinkIndexes(bl),
             checksum: bl.checksum,
@@ -170,16 +172,19 @@ export const CKBFSData = {
       });
     }
   },
-  unpack: (buf: Uint8Array, version: string = ProtocolVersion.V2): CKBFSDataType => {
+  unpack: (
+    buf: Uint8Array,
+    version: ProtocolVersionType = ProtocolVersion.V2,
+  ): CKBFSDataType => {
     try {
       if (version === ProtocolVersion.V1) {
         const unpacked = CKBFSDataV1.unpack(buf);
         return {
           index: unpacked.index,
           checksum: unpacked.checksum,
-          contentType: ccc.bytesTo(unpacked.contentType, 'utf8'),
-          filename: ccc.bytesTo(unpacked.filename, 'utf8'),
-          backLinks: unpacked.backLinks.map(bl => ({
+          contentType: ccc.bytesTo(unpacked.contentType, "utf8"),
+          filename: ccc.bytesTo(unpacked.filename, "utf8"),
+          backLinks: unpacked.backLinks.map((bl) => ({
             index: bl.index,
             checksum: bl.checksum,
             txHash: bl.txHash,
@@ -191,9 +196,9 @@ export const CKBFSData = {
         return {
           indexes: unpacked.indexes,
           checksum: unpacked.checksum,
-          contentType: ccc.bytesTo(unpacked.contentType, 'utf8'),
-          filename: ccc.bytesTo(unpacked.filename, 'utf8'),
-          backLinks: unpacked.backLinks.map(bl => ({
+          contentType: ccc.bytesTo(unpacked.contentType, "utf8"),
+          filename: ccc.bytesTo(unpacked.filename, "utf8"),
+          backLinks: unpacked.backLinks.map((bl) => ({
             indexes: bl.indexes,
             checksum: bl.checksum,
             txHash: bl.txHash,
@@ -201,12 +206,12 @@ export const CKBFSData = {
         };
       }
     } catch (error) {
-      console.error('Error unpacking CKBFSData:', error);
-      throw new Error('Failed to unpack CKBFSData: ' + error);
+      console.error("Error unpacking CKBFSData:", error);
+      throw new Error("Failed to unpack CKBFSData: " + error);
     }
-  }
+  },
 };
 
 // Constants for CKBFS protocol
-export const CKBFS_HEADER = new Uint8Array([0x43, 0x4B, 0x42, 0x46, 0x53]); // "CKBFS" in ASCII
-export const CKBFS_HEADER_STRING = "CKBFS"; 
+export const CKBFS_HEADER = new Uint8Array([0x43, 0x4b, 0x42, 0x46, 0x53]); // "CKBFS" in ASCII
+export const CKBFS_HEADER_STRING = "CKBFS";
