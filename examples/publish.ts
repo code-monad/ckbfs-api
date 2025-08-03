@@ -6,7 +6,7 @@ const privateKey = process.env.CKB_PRIVATE_KEY || 'your-private-key-here';
 // Initialize the SDK with network and version options
 const ckbfs = new CKBFS(
   privateKey,
-  NetworkType.Testnet, // Use testnet
+  NetworkType.Mainnet, // Use testnet
   {
     version: ProtocolVersion.V2, // Use the latest version (V2)
     chunkSize: 30 * 1024, // 30KB chunks
@@ -28,12 +28,12 @@ async function publishExample() {
     console.log('Using CKBFS config:', config);
     
     // Publish a text file to CKBFS
-    const filePath = './example.txt';
+    const filePath = './code.png';
     
     // You can provide additional options
     const options = {
-      contentType: 'text/plain',
-      filename: 'example.txt',
+      contentType: 'image/png',
+      filename: 'code.png',
       // Specify capacity if needed (default is 200 CKB)
       // capacity: 250n * 100000000n
     };

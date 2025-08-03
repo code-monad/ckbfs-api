@@ -4,6 +4,7 @@ import {
   Transaction,
   ClientPublicTestnet,
   SignerCkbPrivateKey,
+  ClientPublicMainnet,
 } from "@ckb-ccc/core";
 import {
   calculateChecksum,
@@ -156,7 +157,10 @@ export class CKBFS {
         options ||
         (typeof networkOrOptions === "object" ? networkOrOptions : {});
 
-      const client = new ClientPublicTestnet();
+      const client =
+        network === "mainnet"
+          ? new ClientPublicMainnet()
+          : new ClientPublicTestnet();
       this.signer = new SignerCkbPrivateKey(client, privateKey);
       this.network = network;
       this.chunkSize = opts.chunkSize || 30 * 1024;
