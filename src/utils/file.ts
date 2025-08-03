@@ -429,3 +429,629 @@ export function saveFileFromWitnessData(
 
   return filePath;
 }
+
+/**
+ * Identifier types for CKBFS cells
+ */
+export enum IdentifierType {
+  TypeID = "typeId",
+  OutPoint = "outPoint",
+  Unknown = "unknown",
+}
+
+/**
+ * Parsed identifier information
+ */
+export interface ParsedIdentifier {
+  type: IdentifierType;
+  typeId?: string;
+  txHash?: string;
+  index?: number;
+  original: string;
+}
+
+/**
+ * Detects and parses different CKBFS identifier formats
+ * @param identifier The identifier string to parse
+ * @returns Parsed identifier information
+ */
+export function parseIdentifier(identifier: string): ParsedIdentifier {
+  const trimmed = identifier.trim();
+
+  // Type 1: Pure TypeID hex string (with or without 0x prefix)
+  if (trimmed.match(/^(0x)?[a-fA-F0-9]{64}$/)) {
+    const typeId = trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+    return {
+      type: IdentifierType.TypeID,
+      typeId,
+      original: identifier,
+    };
+  }
+
+  // Type 2: CKBFS URI with TypeID
+  if (trimmed.startsWith("ckbfs://")) {
+    const content = trimmed.slice(8); // Remove "ckbfs://"
+
+    // Check if it's TypeID format (64 hex characters)
+    if (content.match(/^[a-fA-F0-9]{64}$/)) {
+      return {
+        type: IdentifierType.TypeID,
+        typeId: `0x${content}`,
+        original: identifier,
+      };
+    }
+
+    // Type 3: CKBFS URI with transaction hash and index (txhash + 'i' + index)
+    const outPointMatch = content.match(/^([a-fA-F0-9]{64})i(\d+)$/);
+    if (outPointMatch) {
+      const [, txHash, indexStr] = outPointMatch;
+      return {
+        type: IdentifierType.OutPoint,
+        txHash: `0x${txHash}`,
+        index: parseInt(indexStr, 10),
+        original: identifier,
+      };
+    }
+  }
+
+  // Unknown format
+  return {
+    type: IdentifierType.Unknown,
+    original: identifier,
+  };
+}
+
+/**
+ * Resolves a CKBFS cell using any supported identifier format
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID, CKBFS URI, or outPoint URI)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the found cell and transaction info, or null if not found
+ */
+async function resolveCKBFSCell(
+  client: any,
+  identifier: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  cell: any;
+  transaction: any;
+  outPoint: { txHash: string; index: number };
+  parsedId: ParsedIdentifier;
+} | null> {
+  const {
+    network = "testnet",
+    version = "20241025.db973a8e8032",
+    useTypeID = false,
+  } = options;
+
+  const parsedId = parseIdentifier(identifier);
+
+  try {
+    if (parsedId.type === IdentifierType.TypeID && parsedId.typeId) {
+      // Use existing TypeID resolution logic
+      const cellInfo = await findCKBFSCellByTypeId(
+        client,
+        parsedId.typeId,
+        network,
+        version,
+        useTypeID,
+      );
+
+      if (cellInfo) {
+        return {
+          ...cellInfo,
+          parsedId,
+        };
+      }
+    } else if (
+      parsedId.type === IdentifierType.OutPoint &&
+      parsedId.txHash &&
+      parsedId.index !== undefined
+    ) {
+      // Resolve using transaction hash and index
+      const txWithStatus = await client.getTransaction(parsedId.txHash);
+
+      if (!txWithStatus || !txWithStatus.transaction) {
+        console.warn(`Transaction ${parsedId.txHash} not found`);
+        return null;
+      }
+
+      // Import Transaction class dynamically
+      const { Transaction } = await import("@ckb-ccc/core");
+      const tx = Transaction.from(txWithStatus.transaction);
+
+      // Check if the index is valid
+      if (parsedId.index >= tx.outputs.length) {
+        console.warn(
+          `Output index ${parsedId.index} out of range for transaction ${parsedId.txHash}`,
+        );
+        return null;
+      }
+
+      const output = tx.outputs[parsedId.index];
+
+      // Verify it's a CKBFS cell by checking if it has a type script
+      if (!output.type) {
+        console.warn(
+          `Output at index ${parsedId.index} is not a CKBFS cell (no type script)`,
+        );
+        return null;
+      }
+
+      // Create a mock cell object similar to what findSingletonCellByType returns
+      const cell = {
+        outPoint: {
+          txHash: parsedId.txHash,
+          index: parsedId.index,
+        },
+        output,
+      };
+
+      return {
+        cell,
+        transaction: txWithStatus.transaction,
+        outPoint: {
+          txHash: parsedId.txHash,
+          index: parsedId.index,
+        },
+        parsedId,
+      };
+    }
+
+    console.warn(
+      `Unable to resolve identifier: ${identifier} (type: ${parsedId.type})`,
+    );
+    return null;
+  } catch (error) {
+    console.error(
+      `Error resolving CKBFS cell for identifier ${identifier}:`,
+      error,
+    );
+    return null;
+  }
+}
+
+/**
+ * Finds a CKBFS cell by TypeID
+ * @param client The CKB client to use for blockchain queries
+ * @param typeId The TypeID (args) of the CKBFS cell to find
+ * @param network The network type (mainnet or testnet)
+ * @param version The protocol version to use
+ * @param useTypeID Whether to use type ID instead of code hash for script matching
+ * @returns Promise resolving to the found cell and transaction info, or null if not found
+ */
+async function findCKBFSCellByTypeId(
+  client: any,
+  typeId: string,
+  network: string = "testnet",
+  version: string = "20241025.db973a8e8032",
+  useTypeID: boolean = false,
+): Promise<{
+  cell: any;
+  transaction: any;
+  outPoint: { txHash: string; index: number };
+} | null> {
+  try {
+    // Import constants dynamically to avoid circular dependencies
+    const { getCKBFSScriptConfig, NetworkType, ProtocolVersion } = await import(
+      "./constants"
+    );
+
+    // Get CKBFS script config
+    const networkType =
+      network === "mainnet" ? NetworkType.Mainnet : NetworkType.Testnet;
+    const protocolVersion =
+      version === "20240906.ce6724722cf6"
+        ? ProtocolVersion.V1
+        : ProtocolVersion.V2;
+    const config = getCKBFSScriptConfig(
+      networkType,
+      protocolVersion,
+      useTypeID,
+    );
+
+    // Create the script to search for
+    const script = {
+      codeHash: config.codeHash,
+      hashType: config.hashType,
+      args: typeId.startsWith("0x") ? typeId : `0x${typeId}`,
+    };
+
+    // Find the cell by type script
+    const cell = await client.findSingletonCellByType(script, true);
+
+    if (!cell) {
+      return null;
+    }
+
+    // Get the transaction that contains this cell
+    const txHash = cell.outPoint.txHash;
+    const txWithStatus = await client.getTransaction(txHash);
+
+    if (!txWithStatus || !txWithStatus.transaction) {
+      throw new Error(`Transaction ${txHash} not found`);
+    }
+
+    return {
+      cell,
+      transaction: txWithStatus.transaction,
+      outPoint: {
+        txHash: cell.outPoint.txHash,
+        index: cell.outPoint.index,
+      },
+    };
+  } catch (error) {
+    console.warn(`Error finding CKBFS cell by TypeID ${typeId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Retrieves complete file content from the blockchain using any supported identifier
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the complete file content and metadata
+ */
+export async function getFileContentFromChainByIdentifier(
+  client: any,
+  identifier: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  backLinks: any[];
+  parsedId: ParsedIdentifier;
+} | null> {
+  const {
+    network = "testnet",
+    version = "20241025.db973a8e8032",
+    useTypeID = false,
+  } = options;
+
+  try {
+    // Resolve the CKBFS cell using any supported identifier format
+    const cellInfo = await resolveCKBFSCell(client, identifier, {
+      network,
+      version,
+      useTypeID,
+    });
+
+    if (!cellInfo) {
+      console.warn(`CKBFS cell with identifier ${identifier} not found`);
+      return null;
+    }
+
+    const { cell, transaction, outPoint, parsedId } = cellInfo;
+
+    // Import Transaction class dynamically
+    const { Transaction } = await import("@ckb-ccc/core");
+    const tx = Transaction.from(transaction);
+
+    // Get output data from the cell
+    const outputIndex = outPoint.index;
+    const outputData = tx.outputsData[outputIndex];
+
+    if (!outputData) {
+      throw new Error(`Output data not found for cell at index ${outputIndex}`);
+    }
+
+    // Import required modules dynamically
+    const { ccc } = await import("@ckb-ccc/core");
+    const { CKBFSData } = await import("./molecule");
+    const { ProtocolVersion } = await import("./constants");
+
+    // Parse the output data
+    const rawData = outputData.startsWith("0x")
+      ? ccc.bytesFrom(outputData.slice(2), "hex")
+      : Buffer.from(outputData, "hex");
+
+    // Try to unpack CKBFS data with both protocol versions
+    let ckbfsData: any;
+    let protocolVersion = version;
+
+    try {
+      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+    } catch (error) {
+      try {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+        protocolVersion = "20240906.ce6724722cf6";
+      } catch (v1Error) {
+        throw new Error(
+          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
+        );
+      }
+    }
+
+    console.log(`Found CKBFS file: ${ckbfsData.filename}`);
+    console.log(`Content type: ${ckbfsData.contentType}`);
+    console.log(`Protocol version: ${protocolVersion}`);
+
+    // Use existing function to get complete file content
+    const content = await getFileContentFromChain(client, outPoint, ckbfsData);
+
+    return {
+      content,
+      filename: ckbfsData.filename,
+      contentType: ckbfsData.contentType,
+      checksum: ckbfsData.checksum,
+      size: content.length,
+      backLinks: ckbfsData.backLinks || [],
+      parsedId,
+    };
+  } catch (error) {
+    console.error(`Error retrieving file by identifier ${identifier}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Retrieves complete file content from the blockchain using TypeID (legacy function)
+ * @param client The CKB client to use for blockchain queries
+ * @param typeId The TypeID (args) of the CKBFS cell
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the complete file content and metadata
+ */
+export async function getFileContentFromChainByTypeId(
+  client: any,
+  typeId: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  backLinks: any[];
+} | null> {
+  const result = await getFileContentFromChainByIdentifier(
+    client,
+    typeId,
+    options,
+  );
+  if (result) {
+    const { parsedId, ...fileData } = result;
+    return fileData;
+  }
+  return null;
+}
+
+/**
+ * Saves file content retrieved from blockchain by identifier to disk
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param outputPath Optional path to save the file (defaults to filename from CKBFS data)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the path where the file was saved, or null if file not found
+ */
+export async function saveFileFromChainByIdentifier(
+  client: any,
+  identifier: string,
+  outputPath?: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<string | null> {
+  try {
+    // Get file content by identifier
+    const fileData = await getFileContentFromChainByIdentifier(
+      client,
+      identifier,
+      options,
+    );
+
+    if (!fileData) {
+      console.warn(`File with identifier ${identifier} not found`);
+      return null;
+    }
+
+    // Determine output path
+    const filePath = outputPath || fileData.filename;
+
+    // Ensure directory exists
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, fileData.content);
+    console.log(`File saved to: ${filePath}`);
+    console.log(`Size: ${fileData.size} bytes`);
+    console.log(`Content type: ${fileData.contentType}`);
+    console.log(`Checksum: ${fileData.checksum}`);
+
+    return filePath;
+  } catch (error) {
+    console.error(`Error saving file by identifier ${identifier}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Saves file content retrieved from blockchain by TypeID to disk (legacy function)
+ * @param client The CKB client to use for blockchain queries
+ * @param typeId The TypeID (args) of the CKBFS cell
+ * @param outputPath Optional path to save the file (defaults to filename from CKBFS data)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the path where the file was saved, or null if file not found
+ */
+export async function saveFileFromChainByTypeId(
+  client: any,
+  typeId: string,
+  outputPath?: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<string | null> {
+  return await saveFileFromChainByIdentifier(
+    client,
+    typeId,
+    outputPath,
+    options,
+  );
+}
+
+/**
+ * Decodes file content directly from identifier using witness decoding (new method)
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the decoded file content and metadata, or null if not found
+ */
+export async function decodeFileFromChainByIdentifier(
+  client: any,
+  identifier: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  backLinks: any[];
+  parsedId: ParsedIdentifier;
+} | null> {
+  const {
+    network = "testnet",
+    version = "20241025.db973a8e8032",
+    useTypeID = false,
+  } = options;
+
+  try {
+    // Resolve the CKBFS cell using any supported identifier format
+    const cellInfo = await resolveCKBFSCell(client, identifier, {
+      network,
+      version,
+      useTypeID,
+    });
+
+    if (!cellInfo) {
+      console.warn(`CKBFS cell with identifier ${identifier} not found`);
+      return null;
+    }
+
+    const { cell, transaction, outPoint, parsedId } = cellInfo;
+
+    // Import required modules dynamically
+    const { Transaction, ccc } = await import("@ckb-ccc/core");
+    const { CKBFSData } = await import("./molecule");
+    const { ProtocolVersion } = await import("./constants");
+
+    const tx = Transaction.from(transaction);
+
+    // Get output data from the cell
+    const outputIndex = outPoint.index;
+    const outputData = tx.outputsData[outputIndex];
+
+    if (!outputData) {
+      throw new Error(`Output data not found for cell at index ${outputIndex}`);
+    }
+
+    // Parse the output data
+    const rawData = outputData.startsWith("0x")
+      ? ccc.bytesFrom(outputData.slice(2), "hex")
+      : Buffer.from(outputData, "hex");
+
+    // Try to unpack CKBFS data with both protocol versions
+    let ckbfsData: any;
+    let protocolVersion = version;
+
+    try {
+      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+    } catch (error) {
+      try {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+        protocolVersion = "20240906.ce6724722cf6";
+      } catch (v1Error) {
+        throw new Error(
+          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
+        );
+      }
+    }
+
+    console.log(`Found CKBFS file: ${ckbfsData.filename}`);
+    console.log(`Content type: ${ckbfsData.contentType}`);
+    console.log(`Using direct witness decoding method`);
+
+    // Get witness indexes from CKBFS data
+    const indexes =
+      ckbfsData.indexes ||
+      (ckbfsData.index !== undefined ? [ckbfsData.index] : []);
+
+    // Use direct witness decoding method
+    const content = decodeFileFromWitnessData({
+      witnesses: tx.witnesses,
+      indexes: indexes,
+      filename: ckbfsData.filename,
+      contentType: ckbfsData.contentType,
+    });
+
+    return {
+      content: content.content,
+      filename: ckbfsData.filename,
+      contentType: ckbfsData.contentType,
+      checksum: ckbfsData.checksum,
+      size: content.size,
+      backLinks: ckbfsData.backLinks || [],
+      parsedId,
+    };
+  } catch (error) {
+    console.error(`Error decoding file by identifier ${identifier}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Decodes file content directly from TypeID using witness decoding (legacy function)
+ * @param client The CKB client to use for blockchain queries
+ * @param typeId The TypeID (args) of the CKBFS cell
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the decoded file content and metadata, or null if not found
+ */
+export async function decodeFileFromChainByTypeId(
+  client: any,
+  typeId: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  backLinks: any[];
+} | null> {
+  const result = await decodeFileFromChainByIdentifier(client, typeId, options);
+  if (result) {
+    const { parsedId, ...fileData } = result;
+    return fileData;
+  }
+  return null;
+}

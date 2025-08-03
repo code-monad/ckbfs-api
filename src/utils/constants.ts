@@ -14,7 +14,8 @@ export const ProtocolVersion = {
 } as const;
 
 export type ProtocolVersionType =
-  (typeof ProtocolVersion)[keyof typeof ProtocolVersion];
+  | (typeof ProtocolVersion)[keyof typeof ProtocolVersion]
+  | string;
 
 // CKBFS Type Script Constants
 export const CKBFS_CODE_HASH: Record<NetworkType, Record<string, string>> = {
@@ -145,4 +146,12 @@ export function getCKBFSScriptConfig(
     depTxHash: DEP_GROUP_TX_HASH[network][version],
     depIndex: 0,
   };
+}
+
+import { Hex, HashType, CellDepInfo, ScriptInfo } from "@ckb-ccc/core";
+
+export class CKBFSScriptInfo extends ScriptInfo {
+  constructor(codeHash: Hex, hashType: HashType, cellDeps: CellDepInfo[]) {
+    super(codeHash, hashType, cellDeps);
+  }
 }

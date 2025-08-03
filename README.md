@@ -235,6 +235,69 @@ const content = await getFileContentFromChain(
 const savedPath = saveFileFromChain(content, ckbfsData, './downloaded-file.txt');
 ```
 
+#### Generic Identifier Retrieval (flexible interface)
+
+```typescript
+import { 
+  getFileContentFromChainByIdentifier,
+  saveFileFromChainByIdentifier,
+  decodeFileFromChainByIdentifier,
+  parseIdentifier,
+  IdentifierType
+} from '@ckbfs/api';
+import { ClientPublicTestnet } from '@ckb-ccc/core';
+
+const client = new ClientPublicTestnet();
+
+// Supported identifier formats:
+const typeIdHex = '0xbce89252cece632ef819943bed9cd0e2576f8ce26f9f02075b621b1c9a28056a';
+const ckbfsTypeIdUri = 'ckbfs://bce89252cece632ef819943bed9cd0e2576f8ce26f9f02075b621b1c9a28056a';
+const ckbfsOutPointUri = 'ckbfs://431c9d668c1815d26eb4f7ac6256eb350ab351474daea8d588400146ab228780i0';
+
+// Parse identifier to see what type it is
+const parsed = parseIdentifier(ckbfsTypeIdUri);
+console.log(`Type: ${parsed.type}`); // "typeId" or "outPoint"
+
+// Get file content using any identifier format (follows backlinks automatically)
+const fileData = await getFileContentFromChainByIdentifier(client, ckbfsTypeIdUri, {
+  network: 'testnet',
+  version: ProtocolVersion.V2,
+  useTypeID: false
+});
+
+if (fileData) {
+  console.log(`File: ${fileData.filename}`);
+  console.log(`Size: ${fileData.size} bytes`);
+  console.log(`Content type: ${fileData.contentType}`);
+  console.log(`Parsed as: ${fileData.parsedId.type}`);
+}
+
+// Save file using outPoint format
+const savedPath = await saveFileFromChainByIdentifier(
+  client, 
+  ckbfsOutPointUri, 
+  './downloaded-file.txt'
+);
+
+// Decode using direct witness method with TypeID hex
+const decodedData = await decodeFileFromChainByIdentifier(client, typeIdHex);
+```
+
+#### TypeID-based Retrieval (legacy interface)
+
+```typescript
+import { 
+  getFileContentFromChainByTypeId,
+  saveFileFromChainByTypeId,
+  decodeFileFromChainByTypeId 
+} from '@ckbfs/api';
+
+// Legacy functions still work with TypeID strings
+const fileData = await getFileContentFromChainByTypeId(client, typeId);
+const savedPath = await saveFileFromChainByTypeId(client, typeId, './file.txt');
+const decodedData = await decodeFileFromChainByTypeId(client, typeId);
+```
+
 #### Direct Witness Decoding (new method)
 
 ```typescript
@@ -287,12 +350,25 @@ const newChecksum = await updateChecksum(oldChecksum, appendedData);
 import { 
   readFileAsUint8Array, 
   getContentType, 
-  splitFileIntoChunks 
+  splitFileIntoChunks,
+  getFileContentFromChainByIdentifier,
+  saveFileFromChainByIdentifier,
+  decodeFileFromChainByIdentifier,
+  parseIdentifier,
+  IdentifierType
 } from '@ckbfs/api';
 
 const fileData = readFileAsUint8Array('./file.txt');
 const mimeType = getContentType('./file.txt');
 const chunks = splitFileIntoChunks('./large-file.bin', 30 * 1024);
+
+// Generic identifier-based file operations
+const client = new ClientPublicTestnet();
+const identifier = 'ckbfs://bce89252cece632ef819943bed9cd0e2576f8ce26f9f02075b621b1c9a28056a';
+const parsed = parseIdentifier(identifier);
+const fileContent = await getFileContentFromChainByIdentifier(client, identifier);
+const savedPath = await saveFileFromChainByIdentifier(client, identifier, './output.txt');
+const decodedFile = await decodeFileFromChainByIdentifier(client, identifier);
 ```
 
 ### Witness Operations
@@ -307,6 +383,39 @@ import {
 const witness = createCKBFSWitness(contentBytes);
 const { version, content } = extractCKBFSWitnessContent(witness);
 const isValid = isCKBFSWitness(witness);
+```
+
+## Identifier Formats
+
+CKBFS supports multiple identifier formats for flexible file access:
+
+### 1. TypeID Hex String
+```
+0xbce89252cece632ef819943bed9cd0e2576f8ce26f9f02075b621b1c9a28056a
+```
+Direct TypeID from the CKBFS cell's type script args.
+
+### 2. CKBFS TypeID URI
+```
+ckbfs://bce89252cece632ef819943bed9cd0e2576f8ce26f9f02075b621b1c9a28056a
+```
+CKBFS URI format using TypeID (without 0x prefix).
+
+### 3. CKBFS OutPoint URI
+```
+ckbfs://431c9d668c1815d26eb4f7ac6256eb350ab351474daea8d588400146ab228780i0
+```
+CKBFS URI format using transaction hash and output index: `ckbfs://{txHash}i{index}`
+
+### Identifier Detection
+
+```typescript
+import { parseIdentifier, IdentifierType } from '@ckbfs/api';
+
+const parsed = parseIdentifier('ckbfs://abc123...i0');
+console.log(parsed.type); // IdentifierType.OutPoint
+console.log(parsed.txHash); // '0xabc123...'
+console.log(parsed.index); // 0
 ```
 
 ## Protocol Details
@@ -371,7 +480,7 @@ npm run example:publish
 # Append example (requires existing transaction hash)
 npm run example:append -- --txhash=0x123456...
 
-# Retrieve example (demonstrates new witness decoding APIs)
+# Retrieve example (demonstrates witness decoding and generic identifier APIs)
 npm run example:retrieve -- --txhash=0x123456...
 
 # All examples
@@ -383,6 +492,59 @@ npm run example
 - `CKB_PRIVATE_KEY`: Your CKB private key for examples
 - `PUBLISH_TX_HASH`: Transaction hash for append examples
 - `TARGET_TX_HASH`: Transaction hash for retrieve examples
+
+## Advanced Usage
+
+### Working with Different Identifier Formats
+
+```typescript
+import { 
+  getFileContentFromChainByIdentifier,
+  parseIdentifier,
+  IdentifierType 
+} from '@ckbfs/api';
+
+// Example identifiers
+const identifiers = [
+  '0xabc123...', // TypeID hex
+  'ckbfs://abc123...', // CKBFS TypeID URI
+  'ckbfs://def456...i0' // CKBFS OutPoint URI
+];
+
+// Process any identifier format
+for (const id of identifiers) {
+  const parsed = parseIdentifier(id);
+  console.log(`Processing ${parsed.type} identifier`);
+  
+  const fileData = await getFileContentFromChainByIdentifier(client, id);
+  if (fileData) {
+    console.log(`Retrieved: ${fileData.filename}`);
+  }
+}
+```
+
+### Batch File Operations
+
+```typescript
+// Retrieve multiple files using different identifier formats
+const fileIdentifiers = [
+  'ckbfs://file1-typeid...',
+  'ckbfs://tx-hash1...i0',
+  '0xfile2-typeid...'
+];
+
+const files = await Promise.all(
+  fileIdentifiers.map(id => 
+    getFileContentFromChainByIdentifier(client, id)
+  )
+);
+
+files.forEach((file, index) => {
+  if (file) {
+    console.log(`File ${index + 1}: ${file.filename} (${file.size} bytes)`);
+  }
+});
+```
 
 ## Network Configuration
 
