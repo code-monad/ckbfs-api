@@ -14,7 +14,6 @@ CKBFS is a file system protocol built on top of the CKB blockchain that enables 
 - **Protocol Versions**: Support for both V1 and V2 CKBFS protocol versions
 - **Network Support**: Compatible with CKB mainnet and testnet
 - **Chunked Storage**: Automatic file chunking for large files
-- **TypeScript**: Full type safety with comprehensive type definitions
 
 ## Installation
 
