@@ -6,11 +6,11 @@ const privateKey = process.env.CKB_PRIVATE_KEY || 'your-private-key-here';
 // Initialize the SDK with network and version options
 const ckbfs = new CKBFS(
   privateKey,
-  NetworkType.Mainnet, // Use testnet
+  NetworkType.Testnet, // Use testnet
   {
     version: ProtocolVersion.V2, // Use the latest version (V2)
     chunkSize: 30 * 1024, // 30KB chunks
-    useTypeID: false // Use code hash instead of type ID
+    useTypeID: false, // Use code hash instead of type ID
   }
 );
 
