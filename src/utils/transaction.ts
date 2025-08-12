@@ -52,6 +52,7 @@ export interface AppendOptions {
   feeRate?: number;
   network?: NetworkType;
   version?: ProtocolVersionType;
+  from?: Transaction;
 }
 
 /**
@@ -370,19 +371,17 @@ export async function createPublishTransaction(
 }
 
 /**
- * Creates a transaction for appending content to a CKBFS file
- * @param signer The signer to use for the transaction
+ * Prepares a transaction for appending content to a CKBFS file without fee and change handling
  * @param options Options for appending content
- * @returns Promise resolving to the created transaction
+ * @returns Promise resolving to the prepared transaction and the output index of CKBFS Cell
  */
-export async function createAppendTransaction(
-  signer: Signer,
+export async function prepareAppendTransaction(
   options: AppendOptions,
-): Promise<Transaction> {
+): Promise<{tx: Transaction, outputIndex: number}> {
   const {
+    from,
     ckbfsCell,
     contentChunks,
-    feeRate,
     network = DEFAULT_NETWORK,
     version = DEFAULT_VERSION,
   } = options;
@@ -402,17 +401,9 @@ export async function createAppendTransaction(
   // Update the existing checksum with the new content - this matches Adler32's
   // cumulative nature as required by Rule 11 in the RFC
   const contentChecksum = await updateChecksum(data.checksum, combinedContent);
-  console.log(
-    `Updated checksum from ${data.checksum} to ${contentChecksum} for appended content`,
-  );
-
-  // Get the recommended address to ensure lock script cell deps are included
-  const address = await signer.getRecommendedAddressObj();
 
   // Calculate the actual witness indices where our content is placed
-  // CKBFS data starts at index 1 if signer's lock script is the same as ckbfs's lock script
-  // else CKBFS data starts at index 0
-  const contentStartIndex = address.script.hash() === lock.hash() ? 1 : 0;
+  const contentStartIndex = from?.witnesses.length || 1;
   const witnessIndices = Array.from(
     { length: contentChunks.length },
     (_, i) => contentStartIndex + i,
@@ -476,13 +467,6 @@ export async function createAppendTransaction(
     ); // Explicitly use V2 for packing
   }
 
-  // Pack the original data to get its size - use the appropriate version
-  const originalData = CKBFSData.pack(data, version);
-  const originalDataSize = originalData.length;
-
-  // Get sizes and calculate capacity requirements
-  const newDataSize = outputData.length;
-
   // Calculate the required capacity for the output cell
   // This accounts for:
   // 1. The output data size
@@ -493,37 +477,96 @@ export async function createAppendTransaction(
     BigInt(outputData.length + type.occupiedSize + lock.occupiedSize + 8) *
     100000000n;
 
-  console.log(
-    `Original capacity: ${capacity}, Calculated size: ${ckbfsCellSize}, Data size: ${outputData.length}`,
-  );
-
   // Use the maximum value between calculated size and original capacity
   // to ensure we have enough capacity but don't decrease capacity unnecessarily
   const outputCapacity = ckbfsCellSize > capacity ? ckbfsCellSize : capacity;
 
   // Create initial transaction with the CKBFS cell input
-  const tx = Transaction.from({
-    inputs: [
-      {
-        previousOutput: {
-          txHash: outPoint.txHash,
-          index: outPoint.index,
+  let preTx: Transaction;
+  if (from) {
+    // If from is not empty, inject/merge the fields
+    preTx = Transaction.from({
+      ...from,
+      inputs: from.inputs.length === 0
+        ? [
+            {
+              previousOutput: {
+                txHash: outPoint.txHash,
+                index: outPoint.index,
+              },
+              since: "0x0",
+            },
+          ]
+        : [
+            ...from.inputs,
+            {
+              previousOutput: {
+                txHash: outPoint.txHash,
+                index: outPoint.index,
+              },
+              since: "0x0",
+            },
+          ],
+      outputs: from.outputs.length === 0
+        ? [
+            {
+              lock,
+              type,
+              capacity: outputCapacity,
+            },
+          ]
+        : [
+            ...from.outputs,
+            {
+              lock,
+              type,
+              capacity: outputCapacity,
+            },
+          ],
+      outputsData: from.outputsData.length === 0
+        ? [outputData]
+        : [
+            ...from.outputsData,
+            outputData,
+          ],
+      witnesses: from.witnesses.length === 0
+        ? [
+            [], // Empty secp witness for signing if not provided
+            ...ckbfsWitnesses.map((w) => `0x${Buffer.from(w).toString("hex")}`),
+          ]
+        : [
+            ...from.witnesses,
+            ...ckbfsWitnesses.map((w) => `0x${Buffer.from(w).toString("hex")}`),
+          ],
+    });
+  } else {
+    preTx = Transaction.from({
+      inputs: [
+        {
+          previousOutput: {
+            txHash: outPoint.txHash,
+            index: outPoint.index,
+          },
+          since: "0x0",
         },
-        since: "0x0",
-      },
-    ],
-    outputs: [
-      {
-        lock,
-        type,
-        capacity: outputCapacity,
-      },
-    ],
-    outputsData: [outputData],
-  });
+      ],
+      outputs: [
+        {
+          lock,
+          type,
+          capacity: outputCapacity,
+        },
+      ],
+      outputsData: [outputData],
+      witnesses: [
+        [], // Empty secp witness for signing
+        ...ckbfsWitnesses.map((w) => `0x${Buffer.from(w).toString("hex")}`),
+      ],
+    });
+  }
 
   // Add the CKBFS dep group cell dependency
-  tx.addCellDeps({
+  preTx.addCellDeps({
     outPoint: {
       txHash: ensureHexPrefix(config.depTxHash),
       index: config.depIndex || 0,
@@ -531,14 +574,41 @@ export async function createAppendTransaction(
     depType: "depGroup",
   });
 
-  const inputsBefore = tx.inputs.length;
+  const outputIndex = from ? from.outputs.length : 0;
+
+  return {tx: preTx, outputIndex};
+}
+
+/**
+ * Creates a transaction for appending content to a CKBFS file
+ * @param signer The signer to use for the transaction
+ * @param options Options for appending content
+ * @returns Promise resolving to the created transaction
+ */
+export async function createAppendTransaction(
+  signer: Signer,
+  options: AppendOptions,
+): Promise<Transaction> {
+  const {
+    ckbfsCell,
+    feeRate,
+  } = options;
+  const { lock } = ckbfsCell;
+
+  // Use prepareAppendTransaction to create the base transaction
+  const { tx: preTx, outputIndex } = await prepareAppendTransaction(options);
+
+  // Get the recommended address to ensure lock script cell deps are included
+  const address = await signer.getRecommendedAddressObj();
+
+  const inputsBefore = preTx.inputs.length;
   // If we need more capacity than the original cell had, add additional inputs
-  if (outputCapacity > capacity) {
+  if (preTx.outputs[outputIndex].capacity > ckbfsCell.capacity) {
     console.log(
-      `Need additional capacity: ${outputCapacity - capacity} shannons`,
+      `Need additional capacity: ${preTx.outputs[outputIndex].capacity - ckbfsCell.capacity} shannons`,
     );
     // Add more inputs to cover the increased capacity
-    await tx.completeInputsByCapacity(signer);
+    await preTx.completeInputsByCapacity(signer);
   }
 
   const witnesses: any = [];
@@ -546,22 +616,20 @@ export async function createAppendTransaction(
   if (address.script.hash() === lock.hash()) {
     witnesses.push("0x");
   }
-  // add ckbfs witnesses
-  witnesses.push(
-    ...ckbfsWitnesses.map((w) => `0x${Buffer.from(w).toString("hex")}`),
-  );
+  // add ckbfs witnesses (skip the first witness which is for signing)
+  witnesses.push(...preTx.witnesses.slice(1));
 
-  // Add empty witnesses for signer's input
+  // Add empty witnesses for additional signer inputs
   // This is to ensure that the transaction is valid and can be signed
-  for (let i = inputsBefore; i < tx.inputs.length; i++) {
+  for (let i = inputsBefore; i < preTx.inputs.length; i++) {
     witnesses.push("0x");
   }
-  tx.witnesses = witnesses;
+  preTx.witnesses = witnesses;
 
   // Complete fee
-  await tx.completeFeeChangeToLock(signer, address.script, feeRate || 2000);
+  await preTx.completeFeeChangeToLock(signer, address.script, feeRate || 2000);
 
-  return tx;
+  return preTx;
 }
 
 /**
@@ -670,12 +738,6 @@ export async function createAppendTransactionDry(
     ); // Explicitly use V2 for packing
   }
 
-  // Pack the original data to get its size - use the appropriate version
-  const originalData = CKBFSData.pack(data, version);
-  const originalDataSize = originalData.length;
-
-  // Get sizes and calculate capacity requirements
-  const newDataSize = outputData.length;
 
   // Calculate the required capacity for the output cell
   // This accounts for:

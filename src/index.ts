@@ -15,7 +15,9 @@ import {
 import {
   createCKBFSCell,
   createPublishTransaction as utilCreatePublishTransaction,
+  preparePublishTransaction,
   createAppendTransaction as utilCreateAppendTransaction,
+  prepareAppendTransaction,
   createAppendTransactionDry,
   publishCKBFS as utilPublishCKBFS,
   appendCKBFS as utilAppendCKBFS,
@@ -528,7 +530,9 @@ export {
   // Transaction utilities (Exporting original names from transaction.ts)
   createCKBFSCell,
   utilCreatePublishTransaction as createPublishTransaction,
+  preparePublishTransaction,
   utilCreateAppendTransaction as createAppendTransaction,
+  prepareAppendTransaction,
   utilPublishCKBFS as publishCKBFS,
   utilAppendCKBFS as appendCKBFS,
   createAppendTransactionDry,
