@@ -16,6 +16,7 @@ import {
   createCKBFSCell,
   createPublishTransaction as utilCreatePublishTransaction,
   createAppendTransaction as utilCreateAppendTransaction,
+  createAppendTransactionDry,
   publishCKBFS as utilPublishCKBFS,
   appendCKBFS as utilAppendCKBFS,
   CKBFSCellOptions,
@@ -122,6 +123,7 @@ export interface CKBFSOptions {
   version?: ProtocolVersionType;
   useTypeID?: boolean;
   network?: NetworkType;
+  rpcUrl?: string;
 }
 
 /**
@@ -133,6 +135,7 @@ export class CKBFS {
   private network: NetworkType;
   private version: ProtocolVersionType;
   private useTypeID: boolean;
+  private rpcUrl: string;
 
   /**
    * Creates a new CKBFS SDK instance
@@ -159,13 +162,18 @@ export class CKBFS {
 
       const client =
         network === "mainnet"
-          ? new ClientPublicMainnet()
-          : new ClientPublicTestnet();
+          ? new ClientPublicMainnet({
+            url: opts.rpcUrl,
+          })
+          : new ClientPublicTestnet({
+            url: opts.rpcUrl,
+          });
       this.signer = new SignerCkbPrivateKey(client, privateKey);
       this.network = network;
       this.chunkSize = opts.chunkSize || 30 * 1024;
       this.version = opts.version || DEFAULT_VERSION;
       this.useTypeID = opts.useTypeID || false;
+      this.rpcUrl = opts.rpcUrl || client.url;
     } else {
       // Initialize with signer
       this.signer = signerOrPrivateKey;
@@ -175,6 +183,7 @@ export class CKBFS {
       this.chunkSize = opts.chunkSize || 30 * 1024;
       this.version = opts.version || DEFAULT_VERSION;
       this.useTypeID = opts.useTypeID || false;
+      this.rpcUrl = opts.rpcUrl || this.signer.client.url;
     }
   }
 
@@ -522,7 +531,7 @@ export {
   utilCreateAppendTransaction as createAppendTransaction,
   utilPublishCKBFS as publishCKBFS,
   utilAppendCKBFS as appendCKBFS,
-
+  createAppendTransactionDry,
   // File utilities
   readFile,
   readFileAsText,
