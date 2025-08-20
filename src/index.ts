@@ -300,7 +300,7 @@ export class CKBFS {
         options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
     });
 
-    console.log("Publish content tx:", tx.stringify());
+    //console.log("Publish content tx:", tx.stringify());
 
     const txHash = await this.signer.sendTransaction(tx);
     return ensureHexPrefix(txHash);
@@ -372,7 +372,7 @@ export class CKBFS {
       // No useTypeID option for append
     });
 
-    console.log("Append content tx:", tx.stringify());
+    //console.log("Append content tx:", tx.stringify());
 
     const txHash = await this.signer.sendTransaction(tx);
     return ensureHexPrefix(txHash);
