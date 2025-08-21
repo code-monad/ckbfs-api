@@ -653,7 +653,7 @@ async function findCKBFSCellByTypeId(
       protocolVersion = ProtocolVersion.V1;
     } else if (version === "20241025.db973a8e8032") {
       protocolVersion = ProtocolVersion.V2;
-    } else if (version === "20250820.v3" || version === ProtocolVersion.V3) {
+    } else if (version === "20250821.4ee6689bf7ec" || version === ProtocolVersion.V3) {
       protocolVersion = ProtocolVersion.V3;
     } else {
       // Default to the version passed in if it doesn't match known patterns
@@ -775,7 +775,7 @@ export async function getFileContentFromChainByIdentifier(
 
     try {
       // Try V3 first if the version suggests it
-      if (version === ProtocolVersion.V3 || version === "20250820.v3") {
+      if (version === ProtocolVersion.V3 || version === "20250821.4ee6689bf7ec") {
         ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
       } else {
         throw new Error("Not V3 version");
@@ -1009,7 +1009,7 @@ export async function decodeFileFromChainByIdentifier(
 
     try {
       // Try V3 first if the version suggests it
-      if (version === ProtocolVersion.V3 || version === "20250820.v3") {
+      if (version === ProtocolVersion.V3 || version === "20250821.4ee6689bf7ec") {
         ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
       } else {
         throw new Error("Not V3 version");

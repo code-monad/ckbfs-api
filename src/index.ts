@@ -136,7 +136,13 @@ export type PublishContentOptions = Omit<
 export type AppendContentOptions = Omit<
   FileOptions,
   "contentType" | "filename" | "capacity"
-> & { capacity?: bigint };
+> & { 
+  capacity?: bigint;
+  // V3 backlink parameters (optional for backward compatibility)
+  previousTxHash?: string;
+  previousWitnessIndex?: number;
+  previousChecksum?: number;
+};
 
 /**
  * Configuration options for the CKBFS SDK
@@ -263,26 +269,52 @@ export class CKBFS {
     const pathParts = filePath.split(/[\\\/]/);
     const filename = options.filename || pathParts[pathParts.length - 1];
 
-    // Create and sign the transaction using the utility function
-    const tx = await utilPublishCKBFS(this.signer, {
-      contentChunks,
-      contentType,
-      filename,
-      lock,
-      capacity: options.capacity,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      useTypeID:
-        options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
 
-    console.log("Publish file tx:", tx.stringify());
+    // Use V3 by default, fallback to legacy for older versions
+    if (version === ProtocolVersion.V3) {
+      const tx = await publishCKBFSV3(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+        version: ProtocolVersion.V3,
+      });
 
-    // Send the transaction
-    const txHash = await this.signer.sendTransaction(tx);
+      console.log("Publish file tx:", tx.stringify());
 
-    return ensureHexPrefix(txHash);
+      // Send the transaction
+      const txHash = await this.signer.sendTransaction(tx);
+
+      return ensureHexPrefix(txHash);
+    } else {
+      // Legacy V1/V2 behavior
+      const tx = await utilPublishCKBFS(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      });
+
+      console.log("Publish file tx:", tx.stringify());
+
+      // Send the transaction
+      const txHash = await this.signer.sendTransaction(tx);
+
+      return ensureHexPrefix(txHash);
+    }
   }
 
   /**
@@ -308,23 +340,44 @@ export class CKBFS {
     // Use provided contentType and filename (required)
     const { contentType, filename } = options;
 
-    const tx = await utilPublishCKBFS(this.signer, {
-      contentChunks,
-      contentType,
-      filename,
-      lock,
-      capacity: options.capacity,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      useTypeID:
-        options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
 
-    //console.log("Publish content tx:", tx.stringify());
+    // Use V3 by default, fallback to legacy for older versions
+    if (version === ProtocolVersion.V3) {
+      const tx = await publishCKBFSV3(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+        version: ProtocolVersion.V3,
+      });
 
-    const txHash = await this.signer.sendTransaction(tx);
-    return ensureHexPrefix(txHash);
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    } else {
+      // Legacy V1/V2 behavior
+      const tx = await utilPublishCKBFS(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      });
+
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    }
   }
 
   /**
@@ -337,7 +390,12 @@ export class CKBFS {
   async appendFile(
     filePath: string,
     ckbfsCell: AppendOptions["ckbfsCell"],
-    options: Omit<FileOptions, "contentType" | "filename"> = {},
+    options: Omit<FileOptions, "contentType" | "filename"> & {
+      // V3 backlink parameters (optional for backward compatibility)
+      previousTxHash?: string;
+      previousWitnessIndex?: number;
+      previousChecksum?: number;
+    } = {},
   ): Promise<string> {
     // Read the file and split into chunks
     const fileContent = readFileAsUint8Array(filePath);
@@ -347,21 +405,45 @@ export class CKBFS {
       contentChunks.push(fileContent.slice(i, i + this.chunkSize));
     }
 
-    // Create and sign the transaction using the utility function
-    const tx = await utilAppendCKBFS(this.signer, {
-      ckbfsCell,
-      contentChunks,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
 
-    console.log("Append file tx:", tx.stringify());
+    // Use V3 when backlink parameters are provided or version is V3
+    if (version === ProtocolVersion.V3 && 
+        options.previousTxHash && 
+        options.previousWitnessIndex !== undefined && 
+        options.previousChecksum !== undefined) {
+      
+      const tx = await appendCKBFSV3(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: ProtocolVersion.V3,
+        previousTxHash: options.previousTxHash,
+        previousWitnessIndex: options.previousWitnessIndex,
+        previousChecksum: options.previousChecksum,
+      });
 
-    // Send the transaction
-    const txHash = await this.signer.sendTransaction(tx);
+      console.log("Append file v3 tx:", tx.stringify());
 
-    return ensureHexPrefix(txHash);
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    } else {
+      // Legacy V1/V2 behavior or when V3 backlink params are missing
+      const tx = await utilAppendCKBFS(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: version === ProtocolVersion.V3 ? ProtocolVersion.V2 : version, // Fallback to V2 if V3 but missing backlink params
+      });
+
+      console.log("Append file tx:", tx.stringify());
+
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    }
   }
 
   /**
@@ -384,19 +466,42 @@ export class CKBFS {
       contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
     }
 
-    const tx = await utilAppendCKBFS(this.signer, {
-      ckbfsCell,
-      contentChunks,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      // No useTypeID option for append
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
 
-    //console.log("Append content tx:", tx.stringify());
+    // Use V3 when backlink parameters are provided or version is V3
+    if (version === ProtocolVersion.V3 && 
+        options.previousTxHash && 
+        options.previousWitnessIndex !== undefined && 
+        options.previousChecksum !== undefined) {
+      
+      const tx = await appendCKBFSV3(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: ProtocolVersion.V3,
+        previousTxHash: options.previousTxHash,
+        previousWitnessIndex: options.previousWitnessIndex,
+        previousChecksum: options.previousChecksum,
+      });
 
-    const txHash = await this.signer.sendTransaction(tx);
-    return ensureHexPrefix(txHash);
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    } else {
+      // Legacy V1/V2 behavior or when V3 backlink params are missing
+      const tx = await utilAppendCKBFS(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: version === ProtocolVersion.V3 ? ProtocolVersion.V2 : version, // Fallback to V2 if V3 but missing backlink params
+        // No useTypeID option for append
+      });
+
+      const txHash = await this.signer.sendTransaction(tx);
+      return ensureHexPrefix(txHash);
+    }
   }
 
   /**
@@ -427,19 +532,38 @@ export class CKBFS {
     const pathParts = filePath.split(/[\\\/]/);
     const filename = options.filename || pathParts[pathParts.length - 1];
 
-    // Create the transaction using the utility function
-    return utilCreatePublishTransaction(this.signer, {
-      contentChunks,
-      contentType,
-      filename,
-      lock,
-      capacity: options.capacity,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      useTypeID:
-        options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
+
+    // Use V3 by default, fallback to legacy for older versions
+    if (version === ProtocolVersion.V3) {
+      return createPublishV3Transaction(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+        version: ProtocolVersion.V3,
+      });
+    } else {
+      // Legacy V1/V2 behavior
+      return utilCreatePublishTransaction(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      });
+    }
   }
 
   /**
@@ -465,18 +589,38 @@ export class CKBFS {
     // Use provided contentType and filename (required)
     const { contentType, filename } = options;
 
-    return utilCreatePublishTransaction(this.signer, {
-      contentChunks,
-      contentType,
-      filename,
-      lock,
-      capacity: options.capacity,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      useTypeID:
-        options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
+
+    // Use V3 by default, fallback to legacy for older versions
+    if (version === ProtocolVersion.V3) {
+      return createPublishV3Transaction(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+        version: ProtocolVersion.V3,
+      });
+    } else {
+      // Legacy V1/V2 behavior
+      return utilCreatePublishTransaction(this.signer, {
+        contentChunks,
+        contentType,
+        filename,
+        lock,
+        capacity: options.capacity,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version,
+        useTypeID:
+          options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      });
+    }
   }
 
   /**
@@ -489,7 +633,12 @@ export class CKBFS {
   async createAppendTransaction(
     filePath: string,
     ckbfsCell: AppendOptions["ckbfsCell"],
-    options: Omit<FileOptions, "contentType" | "filename"> = {},
+    options: Omit<FileOptions, "contentType" | "filename"> & {
+      // V3 backlink parameters (optional for backward compatibility)
+      previousTxHash?: string;
+      previousWitnessIndex?: number;
+      previousChecksum?: number;
+    } = {},
   ): Promise<Transaction> {
     // Read the file and split into chunks
     const fileContent = readFileAsUint8Array(filePath);
@@ -499,14 +648,35 @@ export class CKBFS {
       contentChunks.push(fileContent.slice(i, i + this.chunkSize));
     }
 
-    // Create the transaction using the utility function
-    return utilCreateAppendTransaction(this.signer, {
-      ckbfsCell,
-      contentChunks,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
+
+    // Use V3 when backlink parameters are provided or version is V3
+    if (version === ProtocolVersion.V3 && 
+        options.previousTxHash && 
+        options.previousWitnessIndex !== undefined && 
+        options.previousChecksum !== undefined) {
+      
+      return createAppendV3Transaction(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: ProtocolVersion.V3,
+        previousTxHash: options.previousTxHash,
+        previousWitnessIndex: options.previousWitnessIndex,
+        previousChecksum: options.previousChecksum,
+      });
+    } else {
+      // Legacy V1/V2 behavior or when V3 backlink params are missing
+      return utilCreateAppendTransaction(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: version === ProtocolVersion.V3 ? ProtocolVersion.V2 : version, // Fallback to V2 if V3 but missing backlink params
+      });
+    }
   }
 
   /**
@@ -529,14 +699,36 @@ export class CKBFS {
       contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
     }
 
-    return utilCreateAppendTransaction(this.signer, {
-      ckbfsCell,
-      contentChunks,
-      feeRate: options.feeRate,
-      network: options.network || this.network,
-      version: options.version || this.version,
-      // No useTypeID option for append
-    });
+    // Determine version - default to V3, allow override
+    const version = options.version || this.version;
+
+    // Use V3 when backlink parameters are provided or version is V3
+    if (version === ProtocolVersion.V3 && 
+        options.previousTxHash && 
+        options.previousWitnessIndex !== undefined && 
+        options.previousChecksum !== undefined) {
+      
+      return createAppendV3Transaction(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: ProtocolVersion.V3,
+        previousTxHash: options.previousTxHash,
+        previousWitnessIndex: options.previousWitnessIndex,
+        previousChecksum: options.previousChecksum,
+      });
+    } else {
+      // Legacy V1/V2 behavior or when V3 backlink params are missing
+      return utilCreateAppendTransaction(this.signer, {
+        ckbfsCell,
+        contentChunks,
+        feeRate: options.feeRate,
+        network: options.network || this.network,
+        version: version === ProtocolVersion.V3 ? ProtocolVersion.V2 : version, // Fallback to V2 if V3 but missing backlink params
+        // No useTypeID option for append
+      });
+    }
   }
 
   // V3 Methods

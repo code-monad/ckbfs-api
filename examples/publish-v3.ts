@@ -98,7 +98,7 @@ async function publishContentV3WithSimplifiedAPI() {
     
     // Send the transaction using the public interface
     console.log('\n=== SENDING TRANSACTION ===');
-    const txHash = await ckbfs.publishContentV3(content, {
+    const txHash = await ckbfs.publishContent(content, {
       contentType: 'text/plain',
       filename: 'v3_tx_example.txt',
     });

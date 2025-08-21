@@ -11,7 +11,7 @@ export enum NetworkType {
 export const ProtocolVersion = {
   V1: "20240906.ce6724722cf6", // Original version, compact and simple, suitable for small files
   V2: "20241025.db973a8e8032", // New version, more features and can do complex operations
-  V3: "20250820.v3", // Witnesses-based storage, no backlinks in cell data, more affordable
+  V3: "20250821.4ee6689bf7ec", // Witnesses-based storage, no backlinks in cell data, more affordable
 } as const;
 
 export type ProtocolVersionType =
@@ -30,7 +30,7 @@ export const CKBFS_CODE_HASH: Record<NetworkType, Record<string, string>> = {
     [ProtocolVersion.V2]:
       "0x31e6376287d223b8c0410d562fb422f04d1d617b2947596a14c3d2efb7218d3a",
     [ProtocolVersion.V3]:
-      "0x9741d63744a146821fd96a63b17c6d67ba829556eb9b06dde07934f82f1ab4bd",
+      "0xb5d13ffe0547c78021c01fe24dce2e959a1ed8edbca3cb93dd2e9f57fb56d695",
   },
 };
 
@@ -92,7 +92,7 @@ export const DEP_GROUP_TX_HASH: Record<NetworkType, Record<string, string>> = {
     [ProtocolVersion.V2]:
       "0x469af0d961dcaaedd872968a9388b546717a6ccfa47b3165b3f9c981e9d66aaa",
     [ProtocolVersion.V3]:
-      "0xa0b447ee2ce635b5a8aa10020117e0b6390b336cd1052acf21e00c179a37821a",
+      "0x47cfa8d554cccffe7796f93b58437269de1f98f029d0a52b6b146381f3e95e61",
   },
 };
 
@@ -124,15 +124,15 @@ export const DEPLOY_TX_HASH: Record<
     },
     [ProtocolVersion.V3]: {
       ckbfs:
-        "0x8d6bd7ea704f9b19af5b83b81544c34982515a825e6185d88faf47583a542671",
+        "0x1488b592b0946589730c906c6d9a46fb82c1181156fc1a4251adce14002a9cfb",
       adler32:
         "0x8d6bd7ea704f9b19af5b83b81544c34982515a825e6185d88faf47583a542671",
     },
   },
 };
 
-// Default values - V2 is now the default
-export const DEFAULT_VERSION = ProtocolVersion.V2;
+// Default values - V3 is now the default
+export const DEFAULT_VERSION = ProtocolVersion.V3;
 export const DEFAULT_NETWORK = NetworkType.Testnet;
 
 // Helper function to get CKBFS script configuration
