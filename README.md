@@ -11,7 +11,8 @@ CKBFS is a file system protocol built on top of the CKB blockchain that enables 
 - **File Publishing**: Store files of any type on the CKB blockchain
 - **File Appending**: Add content to existing files with automatic checksum updates
 - **Content Integrity**: Adler32 checksum verification for all file operations
-- **Protocol Versions**: Support for both V1 and V2 CKBFS protocol versions
+- **Protocol Versions**: Support for V1, V2, and V3 CKBFS protocol versions
+- **Witnesses-based Storage**: V3 uses cost-efficient witness storage with backlink tracking
 - **Network Support**: Compatible with CKB mainnet and testnet
 - **Chunked Storage**: Automatic file chunking for large files
 
@@ -31,7 +32,7 @@ const ckbfs = new CKBFS(
   'your-private-key-here',
   NetworkType.Testnet,
   {
-    version: ProtocolVersion.V2,
+    version: ProtocolVersion.V3, // V3 is now default
     chunkSize: 30 * 1024, // 30KB chunks
     useTypeID: false
   }
@@ -65,7 +66,7 @@ new CKBFS(signerOrPrivateKey, networkOrOptions?, options?)
 ```typescript
 interface CKBFSOptions {
   chunkSize?: number;     // Default: 30KB
-  version?: string;       // Default: V2
+  version?: string;       // Default: V3
   useTypeID?: boolean;    // Default: false
   network?: NetworkType;  // Default: Testnet
 }
@@ -260,7 +261,7 @@ console.log(`Type: ${parsed.type}`); // "typeId" or "outPoint"
 // Get file content using any identifier format (follows backlinks automatically)
 const fileData = await getFileContentFromChainByIdentifier(client, ckbfsTypeIdUri, {
   network: 'testnet',
-  version: ProtocolVersion.V2,
+  version: ProtocolVersion.V3, // V3 supports witness-based backlinks
   useTypeID: false
 });
 
@@ -445,11 +446,31 @@ CKBFS uses a molecule-encoded data structure stored in cell output data:
 }
 ```
 
+**V3 Format:**
+```
+{
+  index: number,           // Single witness index (first content witness)
+  checksum: number,        // Adler32 checksum
+  contentType: string,     // MIME type
+  filename: string,        // Original filename
+  // Note: No backLinks in cell data - moved to witnesses for cost efficiency
+}
+```
+
 ### Witness Format
 
-CKBFS witnesses contain:
+**V1/V2 Witnesses:**
 - 5-byte header: "CKBFS" (0x43, 0x4B, 0x42, 0x46, 0x53)
-- 1-byte version: 0x00
+- 1-byte version: 0x00 or 0x02
+- Variable-length content data
+
+**V3 Witnesses (Enhanced with Backlinks):**
+- 5-byte header: "CKBFS" (0x43, 0x4B, 0x42, 0x46, 0x53)
+- 1-byte version: 0x03
+- 32-byte previous transaction hash
+- 4-byte previous witness index
+- 4-byte previous checksum
+- 4-byte next witness index (or 0x00000000 for tail)
 - Variable-length content data
 
 ### Checksum Algorithm
@@ -481,6 +502,10 @@ npm run example:append -- --txhash=0x123456...
 
 # Retrieve example (demonstrates witness decoding and generic identifier APIs)
 npm run example:retrieve -- --txhash=0x123456...
+
+# V3 specific examples
+npm run example:publish-v3
+npm run example:append-v3 -- --txhash=0x123456...
 
 # All examples
 npm run example
