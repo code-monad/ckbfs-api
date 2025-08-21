@@ -28,12 +28,12 @@ async function publishExample() {
     console.log('Using CKBFS config:', config);
     
     // Publish a text file to CKBFS
-    const filePath = './code.png';
+    const filePath = './examples/example.txt';
     
     // You can provide additional options
     const options = {
-      contentType: 'image/png',
-      filename: 'code.png',
+      contentType: 'plain/text',
+      filename: 'example.txt',
       // Specify capacity if needed (default is 200 CKB)
       // capacity: 250n * 100000000n
     };
@@ -95,7 +95,7 @@ async function main() {
   try {
     await publishExample();
     console.log('----------------------------------');
-    await publishContentExample();
+    //await publishContentExample();
     console.log('Example completed successfully!');
     process.exit(0);
   } catch (error) {

@@ -43,15 +43,9 @@ export async function updateChecksum(previousChecksum: number, newData: Uint8Arr
     adlerB = (adlerB + adlerA) % MOD_ADLER;
   }
   
-  // Combine a and b to get the final checksum
-  // Use a Uint32Array to ensure we get a proper unsigned 32-bit integer
-  const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer);
-  view.setUint16(0, adlerA, true); // Set lower 16 bits (little endian)
-  view.setUint16(2, adlerB, true); // Set upper 16 bits (little endian)
-  
-  // Read as an unsigned 32-bit integer
-  const updatedChecksum = view.getUint32(0, true);
+  // Combine a and b to get the final checksum using standard Adler32 format
+  // In Adler32, checksum = (b << 16) | a
+  const updatedChecksum = ((adlerB << 16) | adlerA) >>> 0; // Use unsigned right shift to ensure uint32
   
   console.log(`Updated checksum from ${previousChecksum} to ${updatedChecksum} for appended content`);
   
@@ -93,4 +87,91 @@ export async function verifyWitnessChecksum(
   
   // Otherwise, calculate checksum from scratch
   return verifyChecksum(contentBytes, expectedChecksum);
+}
+
+/**
+ * Verifies the checksum of a CKBFS v3 witness
+ * @param witness The v3 witness bytes
+ * @param expectedChecksum The expected checksum
+ * @param previousChecksum Optional previous checksum for chained verification
+ * @returns Promise resolving to a boolean indicating whether the checksum is valid
+ */
+export async function verifyV3WitnessChecksum(
+  witness: Uint8Array,
+  expectedChecksum: number,
+  previousChecksum?: number
+): Promise<boolean> {
+  // Check if this is a head witness (contains CKBFS header)
+  const isHeadWitness = witness.length >= 50 && 
+    new TextDecoder().decode(witness.slice(0, 5)) === 'CKBFS' &&
+    witness[5] === 0x03;
+  
+  let contentBytes: Uint8Array;
+  let extractedPreviousChecksum: number | undefined = previousChecksum;
+  
+  if (isHeadWitness) {
+    // Head witness: extract content after backlink structure
+    // Format: CKBFS(5) + version(1) + prevTxHash(32) + prevWitnessIndex(4) + prevChecksum(4) + nextIndex(4) + content
+    contentBytes = witness.slice(50);
+    
+    // Extract previous checksum from head witness if not provided externally
+    if (previousChecksum === undefined) {
+      const prevChecksumBytes = witness.slice(42, 46);
+      extractedPreviousChecksum = new DataView(prevChecksumBytes.buffer).getUint32(0, true); // little-endian
+    }
+  } else {
+    // Continuation witness: extract content after next index
+    // Format: nextIndex(4) + content
+    contentBytes = witness.slice(4);
+  }
+  
+  // If previous checksum is available (either provided or extracted), use it for rolling calculation
+  if (extractedPreviousChecksum !== undefined && extractedPreviousChecksum !== 0) {
+    const updatedChecksum = await updateChecksum(extractedPreviousChecksum, contentBytes);
+    return updatedChecksum === expectedChecksum;
+  }
+  
+  // Otherwise, calculate checksum from scratch
+  return verifyChecksum(contentBytes, expectedChecksum);
+}
+
+/**
+ * Verifies the checksum chain for multiple v3 witnesses
+ * @param witnesses Array of v3 witness bytes
+ * @param finalExpectedChecksum The expected final checksum
+ * @param initialChecksum Optional initial checksum (for append operations)
+ * @returns Promise resolving to a boolean indicating whether the checksum chain is valid
+ */
+export async function verifyV3WitnessChain(
+  witnesses: Uint8Array[],
+  finalExpectedChecksum: number,
+  initialChecksum: number = 1 // Adler32 starts with 1
+): Promise<boolean> {
+  if (witnesses.length === 0) {
+    return finalExpectedChecksum === initialChecksum;
+  }
+  
+  let currentChecksum = initialChecksum;
+  
+  // Process each witness in the chain
+  for (const witness of witnesses) {
+    const isHeadWitness = witness.length >= 50 && 
+      new TextDecoder().decode(witness.slice(0, 5)) === 'CKBFS' &&
+      witness[5] === 0x03;
+    
+    let contentBytes: Uint8Array;
+    
+    if (isHeadWitness) {
+      // Head witness: extract content after backlink structure
+      contentBytes = witness.slice(50);
+    } else {
+      // Continuation witness: extract content after next index
+      contentBytes = witness.slice(4);
+    }
+    
+    // Update checksum with this witness's content
+    currentChecksum = await updateChecksum(currentChecksum, contentBytes);
+  }
+  
+  return currentChecksum === finalExpectedChecksum;
 } 

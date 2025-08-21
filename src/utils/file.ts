@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { ProtocolVersion } from "./constants";
+import { extractCKBFSV3WitnessContent, isCKBFSV3Witness } from "./witness";
 
 /**
  * Utility functions for file operations
@@ -524,7 +526,7 @@ async function resolveCKBFSCell(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -628,7 +630,7 @@ async function findCKBFSCellByTypeId(
   client: any,
   typeId: string,
   network: string = "testnet",
-  version: string = "20241025.db973a8e8032",
+  version: string = ProtocolVersion.V3,
   useTypeID: boolean = false,
 ): Promise<{
   cell: any;
@@ -644,10 +646,20 @@ async function findCKBFSCellByTypeId(
     // Get CKBFS script config
     const networkType =
       network === "mainnet" ? NetworkType.Mainnet : NetworkType.Testnet;
-    const protocolVersion =
-      version === "20240906.ce6724722cf6"
-        ? ProtocolVersion.V1
-        : ProtocolVersion.V2;
+    
+    // Map version strings to protocol versions
+    let protocolVersion: string;
+    if (version === "20240906.ce6724722cf6") {
+      protocolVersion = ProtocolVersion.V1;
+    } else if (version === "20241025.db973a8e8032") {
+      protocolVersion = ProtocolVersion.V2;
+    } else if (version === "20250821.4ee6689bf7ec" || version === ProtocolVersion.V3) {
+      protocolVersion = ProtocolVersion.V3;
+    } else {
+      // Default to the version passed in if it doesn't match known patterns
+      protocolVersion = version;
+    }
+
     const config = getCKBFSScriptConfig(
       networkType,
       protocolVersion,
@@ -716,7 +728,7 @@ export async function getFileContentFromChainByIdentifier(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -757,20 +769,30 @@ export async function getFileContentFromChainByIdentifier(
       ? ccc.bytesFrom(outputData.slice(2), "hex")
       : Buffer.from(outputData, "hex");
 
-    // Try to unpack CKBFS data with both protocol versions
+    // Try to unpack CKBFS data with all protocol versions (V3, V2, V1)
     let ckbfsData: any;
     let protocolVersion = version;
 
     try {
-      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
-    } catch (error) {
+      // Try V3 first if the version suggests it
+      if (version === ProtocolVersion.V3 || version === "20250821.4ee6689bf7ec") {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+      } else {
+        throw new Error("Not V3 version");
+      }
+    } catch (v3Error) {
       try {
-        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
-        protocolVersion = "20240906.ce6724722cf6";
-      } catch (v1Error) {
-        throw new Error(
-          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
-        );
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+        protocolVersion = ProtocolVersion.V2;
+      } catch (v2Error) {
+        try {
+          ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+          protocolVersion = ProtocolVersion.V1;
+        } catch (v1Error) {
+          throw new Error(
+            `Failed to unpack CKBFS data with all versions: V3(${v3Error}), V2(${v2Error}), V1(${v1Error})`,
+          );
+        }
       }
     }
 
@@ -778,8 +800,13 @@ export async function getFileContentFromChainByIdentifier(
     console.log(`Content type: ${ckbfsData.contentType}`);
     console.log(`Protocol version: ${protocolVersion}`);
 
-    // Use existing function to get complete file content
-    const content = await getFileContentFromChain(client, outPoint, ckbfsData);
+    // Use appropriate function to get complete file content based on protocol version
+    let content: Uint8Array;
+    if (protocolVersion === ProtocolVersion.V3) {
+      content = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+    } else {
+      content = await getFileContentFromChain(client, outPoint, ckbfsData);
+    }
 
     return {
       content,
@@ -937,7 +964,7 @@ export async function decodeFileFromChainByIdentifier(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -976,20 +1003,30 @@ export async function decodeFileFromChainByIdentifier(
       ? ccc.bytesFrom(outputData.slice(2), "hex")
       : Buffer.from(outputData, "hex");
 
-    // Try to unpack CKBFS data with both protocol versions
+    // Try to unpack CKBFS data with all protocol versions (V3, V2, V1)
     let ckbfsData: any;
     let protocolVersion = version;
 
     try {
-      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
-    } catch (error) {
+      // Try V3 first if the version suggests it
+      if (version === ProtocolVersion.V3 || version === "20250821.4ee6689bf7ec") {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+      } else {
+        throw new Error("Not V3 version");
+      }
+    } catch (v3Error) {
       try {
-        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
-        protocolVersion = "20240906.ce6724722cf6";
-      } catch (v1Error) {
-        throw new Error(
-          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
-        );
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+        protocolVersion = ProtocolVersion.V2;
+      } catch (v2Error) {
+        try {
+          ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+          protocolVersion = ProtocolVersion.V1;
+        } catch (v1Error) {
+          throw new Error(
+            `Failed to unpack CKBFS data with all versions: V3(${v3Error}), V2(${v2Error}), V1(${v1Error})`,
+          );
+        }
       }
     }
 
@@ -1002,13 +1039,24 @@ export async function decodeFileFromChainByIdentifier(
       ckbfsData.indexes ||
       (ckbfsData.index !== undefined ? [ckbfsData.index] : []);
 
-    // Use direct witness decoding method
-    const content = decodeFileFromWitnessData({
-      witnesses: tx.witnesses,
-      indexes: indexes,
-      filename: ckbfsData.filename,
-      contentType: ckbfsData.contentType,
-    });
+    // Use direct witness decoding method for V1/V2, or appropriate method for V3
+    let content: any;
+    if (protocolVersion === ProtocolVersion.V3) {
+      // For V3, we should use the V3-specific content retrieval which handles witness chains
+      const fullContent = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+      content = {
+        content: fullContent,
+        size: fullContent.length,
+      };
+    } else {
+      // For V1/V2, use the direct witness decoding method
+      content = decodeFileFromWitnessData({
+        witnesses: tx.witnesses,
+        indexes: indexes,
+        filename: ckbfsData.filename,
+        contentType: ckbfsData.contentType,
+      });
+    }
 
     return {
       content: content.content,
@@ -1054,4 +1102,307 @@ export async function decodeFileFromChainByTypeId(
     return fileData;
   }
   return null;
+}
+
+/**
+ * Retrieves complete file content from the blockchain for CKBFS v3
+ * V3 stores backlinks in witnesses instead of cell data
+ * @param client The CKB client to use for blockchain queries
+ * @param outPoint The output point of the latest CKBFS v3 cell
+ * @param ckbfsData The data from the latest CKBFS v3 cell
+ * @returns Promise resolving to the complete file content
+ */
+export async function getFileContentFromChainV3(
+  client: any,
+  outPoint: { txHash: string; index: number },
+  ckbfsData: any,
+): Promise<Uint8Array> {
+  console.log(`Retrieving v3 file: ${safelyDecode(ckbfsData.filename)}`);
+  console.log(`Content type: ${safelyDecode(ckbfsData.contentType)}`);
+
+  // Follow the CKBFS cell chain backwards to build the complete transaction sequence
+  const transactionChain: Array<{
+    txHash: string;
+    cellIndex: number;
+    witnessIndex: number;
+    content: Uint8Array[];
+    isPublish: boolean;
+  }> = [];
+
+  let currentTxHash = outPoint.txHash;
+  let currentCellIndex = outPoint.index;
+  let currentWitnessIndex = ckbfsData.index;
+
+
+
+  // Follow the chain backwards to build the complete transaction sequence
+  while (currentTxHash && currentWitnessIndex !== undefined) {
+    const tx = await client.getTransaction(currentTxHash);
+    if (!tx || !tx.transaction) {
+      console.warn(`Transaction ${currentTxHash} not found`);
+      break;
+    }
+
+    if (currentWitnessIndex >= tx.transaction.witnesses.length) {
+      console.warn(`Witness index ${currentWitnessIndex} out of range in transaction ${currentTxHash}`);
+      break;
+    }
+
+    const witnessHex = tx.transaction.witnesses[currentWitnessIndex];
+    const witness = new Uint8Array(Buffer.from(witnessHex.slice(2), "hex"));
+
+    // Check if this is a v3 head witness
+    if (isCKBFSV3Witness(witness)) {
+      const witnessData = extractCKBFSV3WitnessContent(witness, true);
+      
+      // Collect content from this transaction (head + continuation witnesses)
+      const txContentPieces: Uint8Array[] = [witnessData.content];
+      
+      // Follow continuation witnesses in this transaction
+      let nextIndex = witnessData.nextIndex;
+      while (nextIndex > 0 && nextIndex < tx.transaction.witnesses.length) {
+        const nextWitnessHex = tx.transaction.witnesses[nextIndex];
+        const nextWitness = new Uint8Array(Buffer.from(nextWitnessHex.slice(2), "hex"));
+
+        const nextWitnessData = extractCKBFSV3WitnessContent(nextWitness, false);
+        txContentPieces.push(nextWitnessData.content);
+
+        nextIndex = nextWitnessData.nextIndex;
+      }
+
+      // Check if this is a publish operation (all zeros for previous position)
+      const isPublish = witnessData.previousTxHash === '0x' + '00'.repeat(32) && 
+                       witnessData.previousWitnessIndex === 0;
+
+      // Add this transaction's content to the beginning of the chain (since we're going backwards)
+      transactionChain.unshift({
+        txHash: currentTxHash,
+        cellIndex: currentCellIndex,
+        witnessIndex: currentWitnessIndex,
+        content: txContentPieces,
+        isPublish,
+      });
+
+      // If this is the original publish operation, we're done
+      if (isPublish) {
+        break;
+      }
+
+      // For append operations, we need to find the previous CKBFS cell
+      const previousTxHash = witnessData.previousTxHash;
+
+      if (!previousTxHash || previousTxHash === '0x' + '00'.repeat(32)) {
+        break;
+      }
+
+      // Get the previous transaction to find the CKBFS cell and its witness index
+      const prevTx = await client.getTransaction(previousTxHash);
+      if (!prevTx || !prevTx.transaction) {
+        console.warn(`Previous transaction ${previousTxHash} not found`);
+        break;
+      }
+
+      // Import Transaction class to parse the previous transaction
+      const { Transaction } = await import("@ckb-ccc/core");
+      const prevTxObj = Transaction.from(prevTx.transaction);
+      
+      // Find the CKBFS cell in the previous transaction (it should have a type script)
+      let prevCkbfsCellIndex = -1;
+      let prevCkbfsData: any = null;
+      
+      for (let i = 0; i < prevTxObj.outputs.length; i++) {
+        const output = prevTxObj.outputs[i];
+        const outputData = prevTxObj.outputsData[i];
+        
+        // Check if this output has a type script (CKBFS cells have type scripts)
+        if (output.type && outputData && outputData !== '0x') {
+          try {
+            // Try to parse as CKBFS data
+            const { ccc } = await import("@ckb-ccc/core");
+            const { CKBFSData } = await import("./molecule");
+            const { ProtocolVersion } = await import("./constants");
+
+            const rawData = outputData.startsWith("0x")
+              ? ccc.bytesFrom(outputData.slice(2), "hex")
+              : Buffer.from(outputData, "hex");
+
+            const ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+            
+            prevCkbfsCellIndex = i;
+            prevCkbfsData = ckbfsData;
+            break;
+          } catch (error) {
+            // Not a CKBFS cell, continue searching
+          }
+        }
+      }
+
+      if (prevCkbfsCellIndex === -1 || !prevCkbfsData) {
+        console.warn(`No CKBFS cell found in previous transaction ${previousTxHash}`);
+        break;
+      }
+
+      const previousWitnessIndex = prevCkbfsData.index;
+
+      // Move to the previous CKBFS cell
+      currentTxHash = previousTxHash;
+      currentCellIndex = prevCkbfsCellIndex;
+      currentWitnessIndex = previousWitnessIndex;
+    } else {
+      console.warn(`Witness at index ${currentWitnessIndex} in transaction ${currentTxHash} is not a valid CKBFS v3 witness`);
+      break;
+    }
+  }
+
+  // Now assemble all content pieces in chronological order (first creation to latest)
+  const allContentPieces: Uint8Array[] = [];
+  
+  for (const txEntry of transactionChain) {
+    allContentPieces.push(...txEntry.content);
+  }
+
+  // Combine all content pieces
+  return Buffer.concat(allContentPieces);
+}
+
+/**
+ * Retrieves complete file content from the blockchain using identifier for CKBFS v3
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the complete file content and metadata
+ */
+export async function getFileContentFromChainByIdentifierV3(
+  client: any,
+  identifier: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  parsedId: ParsedIdentifier;
+} | null> {
+  const {
+    network = "testnet",
+    version = ProtocolVersion.V3,
+    useTypeID = false,
+  } = options;
+
+  try {
+    // Resolve the CKBFS cell using any supported identifier format
+    const cellInfo = await resolveCKBFSCell(client, identifier, {
+      network,
+      version,
+      useTypeID,
+    });
+
+    if (!cellInfo) {
+      console.warn(`CKBFS v3 cell with identifier ${identifier} not found`);
+      return null;
+    }
+
+    const { cell, transaction, outPoint, parsedId } = cellInfo;
+
+    // Import Transaction class dynamically
+    const { Transaction } = await import("@ckb-ccc/core");
+    const tx = Transaction.from(transaction);
+
+    // Get output data from the cell
+    const outputIndex = outPoint.index;
+    const outputData = tx.outputsData[outputIndex];
+
+    if (!outputData) {
+      throw new Error(`Output data not found for cell at index ${outputIndex}`);
+    }
+
+    // Import required modules dynamically
+    const { ccc } = await import("@ckb-ccc/core");
+    const { CKBFSData } = await import("./molecule");
+
+    // Parse the output data
+    const rawData = outputData.startsWith("0x")
+      ? ccc.bytesFrom(outputData.slice(2), "hex")
+      : Buffer.from(outputData, "hex");
+
+    // Unpack CKBFS v3 data
+    const ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+
+    console.log(`Found CKBFS v3 file: ${ckbfsData.filename}`);
+    console.log(`Content type: ${ckbfsData.contentType}`);
+
+    // Use v3-specific function to get complete file content
+    const content = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+
+    return {
+      content,
+      filename: ckbfsData.filename,
+      contentType: ckbfsData.contentType,
+      checksum: ckbfsData.checksum,
+      size: content.length,
+      parsedId,
+    };
+  } catch (error) {
+    console.error(`Error retrieving v3 file by identifier ${identifier}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Saves CKBFS v3 file content retrieved from blockchain by identifier to disk
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param outputPath Optional path to save the file (defaults to filename from CKBFS data)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the path where the file was saved, or null if file not found
+ */
+export async function saveFileFromChainByIdentifierV3(
+  client: any,
+  identifier: string,
+  outputPath?: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<string | null> {
+  try {
+    // Get file content by identifier using v3 method
+    const fileData = await getFileContentFromChainByIdentifierV3(
+      client,
+      identifier,
+      { ...options, version: ProtocolVersion.V3 },
+    );
+
+    if (!fileData) {
+      console.warn(`CKBFS v3 file with identifier ${identifier} not found`);
+      return null;
+    }
+
+    // Determine output path
+    const filePath = outputPath || fileData.filename;
+
+    // Ensure directory exists
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, fileData.content);
+    console.log(`CKBFS v3 file saved to: ${filePath}`);
+    console.log(`Size: ${fileData.size} bytes`);
+    console.log(`Content type: ${fileData.contentType}`);
+    console.log(`Checksum: ${fileData.checksum}`);
+
+    return filePath;
+  } catch (error) {
+    console.error(`Error saving v3 file by identifier ${identifier}:`, error);
+    throw error;
+  }
 }
