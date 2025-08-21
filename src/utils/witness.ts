@@ -131,17 +131,19 @@ export function createCKBFSV3Witness(options: CKBFSV3WitnessOptions): Uint8Array
 /**
  * Creates an array of v3 witnesses for chunked content
  * @param contentChunks Array of content chunks
- * @param options Backlink options for head witness
+ * @param options Backlink options for head witness and start index
  * @returns Array of Uint8Array witnesses
  */
 export function createChunkedCKBFSV3Witnesses(
   contentChunks: Uint8Array[],
-  options: Omit<CKBFSV3WitnessOptions, 'content' | 'nextIndex'> = {}
+  options: Omit<CKBFSV3WitnessOptions, 'content' | 'nextIndex'> & { startIndex?: number } = {}
 ): Uint8Array[] {
   if (contentChunks.length === 0) {
     return [];
   }
 
+  // Default start index to 1 if not provided (witness 0 is typically for signing)
+  const startIndex = options.startIndex || 1;
   const witnesses: Uint8Array[] = [];
   
   for (let i = 0; i < contentChunks.length; i++) {
@@ -152,12 +154,12 @@ export function createChunkedCKBFSV3Witnesses(
       // Head witness with backlink info
       witnesses.push(createCKBFSV3Witness({
         ...options,
-        nextIndex: isTail ? 0 : i + 2, // Next witness index (1-based, 0 for tail)
+        nextIndex: isTail ? 0 : startIndex + i + 1, // Correct next witness index calculation
         content: contentChunks[i]
       }));
     } else {
       // Middle/tail witness with minimal header
-      const nextIndex = isTail ? 0 : i + 2;
+      const nextIndex = isTail ? 0 : startIndex + i + 1;
       const nextIndexBytes = new Uint8Array(4);
       new DataView(nextIndexBytes.buffer).setUint32(0, nextIndex, true);
       
@@ -207,9 +209,9 @@ export function extractCKBFSV3WitnessContent(witness: Uint8Array, isHeadWitness:
     const prevTxHashBytes = witness.slice(6, 38);
     const previousTxHash = '0x' + Array.from(prevTxHashBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     
-    const previousWitnessIndex = new DataView(witness.buffer.slice(38, 42)).getUint32(0, true);
-    const previousChecksum = new DataView(witness.buffer.slice(42, 46)).getUint32(0, true);
-    const nextIndex = new DataView(witness.buffer.slice(46, 50)).getUint32(0, true);
+    const previousWitnessIndex = new DataView(witness.slice(38, 42).buffer).getUint32(0, true);
+    const previousChecksum = new DataView(witness.slice(42, 46).buffer).getUint32(0, true);
+    const nextIndex = new DataView(witness.slice(46, 50).buffer).getUint32(0, true);
     const content = witness.slice(50);
     
     return {
@@ -226,7 +228,7 @@ export function extractCKBFSV3WitnessContent(witness: Uint8Array, isHeadWitness:
       throw new Error('Invalid CKBFS v3 continuation witness: too short');
     }
     
-    const nextIndex = new DataView(witness.buffer.slice(0, 4)).getUint32(0, true);
+    const nextIndex = new DataView(witness.slice(0, 4).buffer).getUint32(0, true);
     const content = witness.slice(4);
     
     return {

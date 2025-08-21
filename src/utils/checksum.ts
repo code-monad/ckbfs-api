@@ -43,15 +43,9 @@ export async function updateChecksum(previousChecksum: number, newData: Uint8Arr
     adlerB = (adlerB + adlerA) % MOD_ADLER;
   }
   
-  // Combine a and b to get the final checksum
-  // Use a Uint32Array to ensure we get a proper unsigned 32-bit integer
-  const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer);
-  view.setUint16(0, adlerA, true); // Set lower 16 bits (little endian)
-  view.setUint16(2, adlerB, true); // Set upper 16 bits (little endian)
-  
-  // Read as an unsigned 32-bit integer
-  const updatedChecksum = view.getUint32(0, true);
+  // Combine a and b to get the final checksum using standard Adler32 format
+  // In Adler32, checksum = (b << 16) | a
+  const updatedChecksum = ((adlerB << 16) | adlerA) >>> 0; // Use unsigned right shift to ensure uint32
   
   console.log(`Updated checksum from ${previousChecksum} to ${updatedChecksum} for appended content`);
   
@@ -113,20 +107,27 @@ export async function verifyV3WitnessChecksum(
     witness[5] === 0x03;
   
   let contentBytes: Uint8Array;
+  let extractedPreviousChecksum: number | undefined = previousChecksum;
   
   if (isHeadWitness) {
     // Head witness: extract content after backlink structure
     // Format: CKBFS(5) + version(1) + prevTxHash(32) + prevWitnessIndex(4) + prevChecksum(4) + nextIndex(4) + content
     contentBytes = witness.slice(50);
+    
+    // Extract previous checksum from head witness if not provided externally
+    if (previousChecksum === undefined) {
+      const prevChecksumBytes = witness.slice(42, 46);
+      extractedPreviousChecksum = new DataView(prevChecksumBytes.buffer).getUint32(0, true); // little-endian
+    }
   } else {
     // Continuation witness: extract content after next index
     // Format: nextIndex(4) + content
     contentBytes = witness.slice(4);
   }
   
-  // If previous checksum is provided, use it for rolling calculation
-  if (previousChecksum !== undefined) {
-    const updatedChecksum = await updateChecksum(previousChecksum, contentBytes);
+  // If previous checksum is available (either provided or extracted), use it for rolling calculation
+  if (extractedPreviousChecksum !== undefined && extractedPreviousChecksum !== 0) {
+    const updatedChecksum = await updateChecksum(extractedPreviousChecksum, contentBytes);
     return updatedChecksum === expectedChecksum;
   }
   

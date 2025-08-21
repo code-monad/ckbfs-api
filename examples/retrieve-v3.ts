@@ -1,11 +1,9 @@
 import { 
   getFileContentFromChainByIdentifierV3, 
   saveFileFromChainByIdentifierV3,
-  NetworkType, 
   ProtocolVersion,
-  ClientPublicTestnet,
-  ClientPublicMainnet 
 } from '../src/index';
+import { ClientPublicTestnet } from '@ckb-ccc/core';
 
 // Initialize the CKB client
 const client = new ClientPublicTestnet(); // Use testnet
@@ -16,7 +14,7 @@ const client = new ClientPublicTestnet(); // Use testnet
 async function retrieveFileByTypeIdV3Example() {
   try {
     // Example TypeID (replace with actual TypeID from a v3 published file)
-    const typeId = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const typeId = "0xc387111856be837b1f358d49a9d7e4461dc18244c2b7b59f9012617b1c09d7be";
     
     console.log(`Retrieving CKBFS v3 file by TypeID: ${typeId}`);
     
@@ -40,7 +38,25 @@ async function retrieveFileByTypeIdV3Example() {
     console.log(`Content type: ${fileData.contentType}`);
     console.log(`Size: ${fileData.size} bytes`);
     console.log(`Checksum: ${fileData.checksum}`);
-    console.log(`Content preview: ${fileData.content.slice(0, 100)}...`);
+    
+    // Enhanced content preview to better understand the file content
+    const contentText = fileData.content.toString();
+    console.log(`Full content length: ${contentText.length} characters`);
+    
+    if (contentText.length <= 200) {
+      console.log(`Full content: "${contentText}"`);
+    } else {
+      console.log(`Content preview (first 100 chars): "${contentText.slice(0, 100)}"`);
+      console.log(`Content preview (last 100 chars): "${contentText.slice(-100)}"`);
+    }
+    
+    // Check if content looks like it might be truncated or only showing appends
+    const lines = contentText.split('\n');
+    console.log(`Content has ${lines.length} lines`);
+    if (lines.length > 3) {
+      console.log(`First line: "${lines[0]}"`);
+      console.log(`Last line: "${lines[lines.length - 1]}"`);
+    }
     
     return fileData;
   } catch (error) {
@@ -90,7 +106,7 @@ async function retrieveAndSaveFileV3Example() {
 async function retrieveFileByURIV3Example() {
   try {
     // Example CKBFS URI (replace with actual URI)
-    const ckbfsUri = "ckbfs://1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const ckbfsUri = "ckbfs://c387111856be837b1f358d49a9d7e4461dc18244c2b7b59f9012617b1c09d7be";
     
     console.log(`Retrieving CKBFS v3 file by URI: ${ckbfsUri}`);
     
@@ -114,6 +130,7 @@ async function retrieveFileByURIV3Example() {
     console.log(`Content type: ${fileData.contentType}`);
     console.log(`Size: ${fileData.size} bytes`);
     console.log(`Checksum: ${fileData.checksum}`);
+    console.log(`Content: ${fileData.content}`);
     
     return fileData;
   } catch (error) {
@@ -185,9 +202,9 @@ async function main() {
     console.log('');
     
     // Uncomment to test different retrieval methods:
-    // await retrieveFileByTypeIdV3Example();
+    await retrieveFileByTypeIdV3Example();
     // await retrieveAndSaveFileV3Example();
-    // await retrieveFileByURIV3Example();
+    await retrieveFileByURIV3Example();
     // await retrieveFileByOutPointV3Example();
     
     console.log('Retrieval example structure completed successfully!');

@@ -127,16 +127,17 @@ export async function preparePublishV3Transaction(
   const combinedContent = Buffer.concat(contentChunks);
   const checksum = await calculateChecksum(combinedContent);
 
+  // V3 format uses single index (first witness containing content)
+  const contentStartIndex = from?.witnesses.length || 1;
+  
   // Create CKBFS v3 witnesses (no backlinks for publish operation)
   const ckbfsWitnesses = createChunkedCKBFSV3Witnesses(contentChunks, {
     // For publish operation, all previous fields are zero
     previousTxHash: '0x' + '00'.repeat(32),
     previousWitnessIndex: 0,
     previousChecksum: 0,
+    startIndex: contentStartIndex,
   });
-
-  // V3 format uses single index (first witness containing content)
-  const contentStartIndex = from?.witnesses.length || 1;
   
   // Create CKBFS v3 cell output data
   const outputData = CKBFSData.pack(

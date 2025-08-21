@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { ProtocolVersion } from "./constants";
-import { extractCKBFSV3WitnessContent } from "./witness";
+import { extractCKBFSV3WitnessContent, isCKBFSV3Witness } from "./witness";
 
 /**
  * Utility functions for file operations
@@ -526,7 +526,7 @@ async function resolveCKBFSCell(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -630,7 +630,7 @@ async function findCKBFSCellByTypeId(
   client: any,
   typeId: string,
   network: string = "testnet",
-  version: string = "20241025.db973a8e8032",
+  version: string = ProtocolVersion.V3,
   useTypeID: boolean = false,
 ): Promise<{
   cell: any;
@@ -646,10 +646,20 @@ async function findCKBFSCellByTypeId(
     // Get CKBFS script config
     const networkType =
       network === "mainnet" ? NetworkType.Mainnet : NetworkType.Testnet;
-    const protocolVersion =
-      version === "20240906.ce6724722cf6"
-        ? ProtocolVersion.V1
-        : ProtocolVersion.V2;
+    
+    // Map version strings to protocol versions
+    let protocolVersion: string;
+    if (version === "20240906.ce6724722cf6") {
+      protocolVersion = ProtocolVersion.V1;
+    } else if (version === "20241025.db973a8e8032") {
+      protocolVersion = ProtocolVersion.V2;
+    } else if (version === "20250820.v3" || version === ProtocolVersion.V3) {
+      protocolVersion = ProtocolVersion.V3;
+    } else {
+      // Default to the version passed in if it doesn't match known patterns
+      protocolVersion = version;
+    }
+
     const config = getCKBFSScriptConfig(
       networkType,
       protocolVersion,
@@ -718,7 +728,7 @@ export async function getFileContentFromChainByIdentifier(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -759,20 +769,30 @@ export async function getFileContentFromChainByIdentifier(
       ? ccc.bytesFrom(outputData.slice(2), "hex")
       : Buffer.from(outputData, "hex");
 
-    // Try to unpack CKBFS data with both protocol versions
+    // Try to unpack CKBFS data with all protocol versions (V3, V2, V1)
     let ckbfsData: any;
     let protocolVersion = version;
 
     try {
-      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
-    } catch (error) {
+      // Try V3 first if the version suggests it
+      if (version === ProtocolVersion.V3 || version === "20250820.v3") {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+      } else {
+        throw new Error("Not V3 version");
+      }
+    } catch (v3Error) {
       try {
-        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
-        protocolVersion = "20240906.ce6724722cf6";
-      } catch (v1Error) {
-        throw new Error(
-          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
-        );
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+        protocolVersion = ProtocolVersion.V2;
+      } catch (v2Error) {
+        try {
+          ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+          protocolVersion = ProtocolVersion.V1;
+        } catch (v1Error) {
+          throw new Error(
+            `Failed to unpack CKBFS data with all versions: V3(${v3Error}), V2(${v2Error}), V1(${v1Error})`,
+          );
+        }
       }
     }
 
@@ -780,8 +800,13 @@ export async function getFileContentFromChainByIdentifier(
     console.log(`Content type: ${ckbfsData.contentType}`);
     console.log(`Protocol version: ${protocolVersion}`);
 
-    // Use existing function to get complete file content
-    const content = await getFileContentFromChain(client, outPoint, ckbfsData);
+    // Use appropriate function to get complete file content based on protocol version
+    let content: Uint8Array;
+    if (protocolVersion === ProtocolVersion.V3) {
+      content = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+    } else {
+      content = await getFileContentFromChain(client, outPoint, ckbfsData);
+    }
 
     return {
       content,
@@ -939,7 +964,7 @@ export async function decodeFileFromChainByIdentifier(
 } | null> {
   const {
     network = "testnet",
-    version = "20241025.db973a8e8032",
+    version = ProtocolVersion.V3,
     useTypeID = false,
   } = options;
 
@@ -978,20 +1003,30 @@ export async function decodeFileFromChainByIdentifier(
       ? ccc.bytesFrom(outputData.slice(2), "hex")
       : Buffer.from(outputData, "hex");
 
-    // Try to unpack CKBFS data with both protocol versions
+    // Try to unpack CKBFS data with all protocol versions (V3, V2, V1)
     let ckbfsData: any;
     let protocolVersion = version;
 
     try {
-      ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
-    } catch (error) {
+      // Try V3 first if the version suggests it
+      if (version === ProtocolVersion.V3 || version === "20250820.v3") {
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+      } else {
+        throw new Error("Not V3 version");
+      }
+    } catch (v3Error) {
       try {
-        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
-        protocolVersion = "20240906.ce6724722cf6";
-      } catch (v1Error) {
-        throw new Error(
-          `Failed to unpack CKBFS data with both versions: V2(${error}), V1(${v1Error})`,
-        );
+        ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V2);
+        protocolVersion = ProtocolVersion.V2;
+      } catch (v2Error) {
+        try {
+          ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V1);
+          protocolVersion = ProtocolVersion.V1;
+        } catch (v1Error) {
+          throw new Error(
+            `Failed to unpack CKBFS data with all versions: V3(${v3Error}), V2(${v2Error}), V1(${v1Error})`,
+          );
+        }
       }
     }
 
@@ -1004,13 +1039,24 @@ export async function decodeFileFromChainByIdentifier(
       ckbfsData.indexes ||
       (ckbfsData.index !== undefined ? [ckbfsData.index] : []);
 
-    // Use direct witness decoding method
-    const content = decodeFileFromWitnessData({
-      witnesses: tx.witnesses,
-      indexes: indexes,
-      filename: ckbfsData.filename,
-      contentType: ckbfsData.contentType,
-    });
+    // Use direct witness decoding method for V1/V2, or appropriate method for V3
+    let content: any;
+    if (protocolVersion === ProtocolVersion.V3) {
+      // For V3, we should use the V3-specific content retrieval which handles witness chains
+      const fullContent = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+      content = {
+        content: fullContent,
+        size: fullContent.length,
+      };
+    } else {
+      // For V1/V2, use the direct witness decoding method
+      content = decodeFileFromWitnessData({
+        witnesses: tx.witnesses,
+        indexes: indexes,
+        filename: ckbfsData.filename,
+        contentType: ckbfsData.contentType,
+      });
+    }
 
     return {
       content: content.content,
@@ -1074,100 +1120,149 @@ export async function getFileContentFromChainV3(
   console.log(`Retrieving v3 file: ${safelyDecode(ckbfsData.filename)}`);
   console.log(`Content type: ${safelyDecode(ckbfsData.contentType)}`);
 
-  // Prepare to collect all content pieces
-  const contentPieces: Uint8Array[] = [];
-  let currentOutPoint = outPoint;
+  // Follow the CKBFS cell chain backwards to build the complete transaction sequence
+  const transactionChain: Array<{
+    txHash: string;
+    cellIndex: number;
+    witnessIndex: number;
+    content: Uint8Array[];
+    isPublish: boolean;
+  }> = [];
 
-  // Process the current transaction first
-  const tx = await client.getTransaction(currentOutPoint.txHash);
-  if (!tx || !tx.transaction) {
-    throw new Error(`Transaction ${currentOutPoint.txHash} not found`);
-  }
+  let currentTxHash = outPoint.txHash;
+  let currentCellIndex = outPoint.index;
+  let currentWitnessIndex = ckbfsData.index;
 
-  // Get content from witnesses
-  const index = ckbfsData.index;
-  if (index !== undefined && index < tx.transaction.witnesses.length) {
-    const witnessHex = tx.transaction.witnesses[index];
-    const witness = Buffer.from(witnessHex.slice(2), "hex"); // Remove 0x prefix
+
+
+  // Follow the chain backwards to build the complete transaction sequence
+  while (currentTxHash && currentWitnessIndex !== undefined) {
+    const tx = await client.getTransaction(currentTxHash);
+    if (!tx || !tx.transaction) {
+      console.warn(`Transaction ${currentTxHash} not found`);
+      break;
+    }
+
+    if (currentWitnessIndex >= tx.transaction.witnesses.length) {
+      console.warn(`Witness index ${currentWitnessIndex} out of range in transaction ${currentTxHash}`);
+      break;
+    }
+
+    const witnessHex = tx.transaction.witnesses[currentWitnessIndex];
+    const witness = new Uint8Array(Buffer.from(witnessHex.slice(2), "hex"));
 
     // Check if this is a v3 head witness
-    if (witness.length >= 50 && witness.slice(0, 5).toString() === "CKBFS" && witness[5] === 0x03) {
-      // Extract witness data using v3 format
+    if (isCKBFSV3Witness(witness)) {
       const witnessData = extractCKBFSV3WitnessContent(witness, true);
-      contentPieces.push(witnessData.content);
-
-      // Follow the witness chain if there are continuation witnesses
+      
+      // Collect content from this transaction (head + continuation witnesses)
+      const txContentPieces: Uint8Array[] = [witnessData.content];
+      
+      // Follow continuation witnesses in this transaction
       let nextIndex = witnessData.nextIndex;
       while (nextIndex > 0 && nextIndex < tx.transaction.witnesses.length) {
         const nextWitnessHex = tx.transaction.witnesses[nextIndex];
-        const nextWitness = Buffer.from(nextWitnessHex.slice(2), "hex");
+        const nextWitness = new Uint8Array(Buffer.from(nextWitnessHex.slice(2), "hex"));
 
-        // Extract continuation witness data
         const nextWitnessData = extractCKBFSV3WitnessContent(nextWitness, false);
-        contentPieces.push(nextWitnessData.content);
+        txContentPieces.push(nextWitnessData.content);
 
-        // Move to next witness
         nextIndex = nextWitnessData.nextIndex;
       }
 
-      // Follow backlinks chain from the head witness
-      let previousTxHash = witnessData.previousTxHash;
-      let previousWitnessIndex = witnessData.previousWitnessIndex;
+      // Check if this is a publish operation (all zeros for previous position)
+      const isPublish = witnessData.previousTxHash === '0x' + '00'.repeat(32) && 
+                       witnessData.previousWitnessIndex === 0;
 
-      // If there's a previous transaction, follow the backlink chain
-      while (previousTxHash && previousTxHash !== '0x' + '00'.repeat(32) && previousWitnessIndex !== undefined) {
-        const backTx = await client.getTransaction(previousTxHash);
-        if (!backTx || !backTx.transaction) {
-          console.warn(`Backlink transaction ${previousTxHash} not found`);
-          break;
-        }
+      // Add this transaction's content to the beginning of the chain (since we're going backwards)
+      transactionChain.unshift({
+        txHash: currentTxHash,
+        cellIndex: currentCellIndex,
+        witnessIndex: currentWitnessIndex,
+        content: txContentPieces,
+        isPublish,
+      });
 
-        if (previousWitnessIndex >= backTx.transaction.witnesses.length) {
-          console.warn(`Backlink witness index ${previousWitnessIndex} out of range`);
-          break;
-        }
+      // If this is the original publish operation, we're done
+      if (isPublish) {
+        break;
+      }
 
-        const backWitnessHex = backTx.transaction.witnesses[previousWitnessIndex];
-        const backWitness = Buffer.from(backWitnessHex.slice(2), "hex");
+      // For append operations, we need to find the previous CKBFS cell
+      const previousTxHash = witnessData.previousTxHash;
 
-        // Check if this is a v3 head witness
-        if (backWitness.length >= 50 && backWitness.slice(0, 5).toString() === "CKBFS" && backWitness[5] === 0x03) {
-          const backWitnessData = extractCKBFSV3WitnessContent(backWitness, true);
-          contentPieces.unshift(backWitnessData.content); // Add to beginning
+      if (!previousTxHash || previousTxHash === '0x' + '00'.repeat(32)) {
+        break;
+      }
 
-          // Follow continuation witnesses in this transaction
-          let nextBackIndex = backWitnessData.nextIndex;
-          const backContentPieces: Uint8Array[] = [];
-          while (nextBackIndex > 0 && nextBackIndex < backTx.transaction.witnesses.length) {
-            const nextBackWitnessHex = backTx.transaction.witnesses[nextBackIndex];
-            const nextBackWitness = Buffer.from(nextBackWitnessHex.slice(2), "hex");
+      // Get the previous transaction to find the CKBFS cell and its witness index
+      const prevTx = await client.getTransaction(previousTxHash);
+      if (!prevTx || !prevTx.transaction) {
+        console.warn(`Previous transaction ${previousTxHash} not found`);
+        break;
+      }
 
-            const nextBackWitnessData = extractCKBFSV3WitnessContent(nextBackWitness, false);
-            backContentPieces.push(nextBackWitnessData.content);
+      // Import Transaction class to parse the previous transaction
+      const { Transaction } = await import("@ckb-ccc/core");
+      const prevTxObj = Transaction.from(prevTx.transaction);
+      
+      // Find the CKBFS cell in the previous transaction (it should have a type script)
+      let prevCkbfsCellIndex = -1;
+      let prevCkbfsData: any = null;
+      
+      for (let i = 0; i < prevTxObj.outputs.length; i++) {
+        const output = prevTxObj.outputs[i];
+        const outputData = prevTxObj.outputsData[i];
+        
+        // Check if this output has a type script (CKBFS cells have type scripts)
+        if (output.type && outputData && outputData !== '0x') {
+          try {
+            // Try to parse as CKBFS data
+            const { ccc } = await import("@ckb-ccc/core");
+            const { CKBFSData } = await import("./molecule");
+            const { ProtocolVersion } = await import("./constants");
 
-            nextBackIndex = nextBackWitnessData.nextIndex;
+            const rawData = outputData.startsWith("0x")
+              ? ccc.bytesFrom(outputData.slice(2), "hex")
+              : Buffer.from(outputData, "hex");
+
+            const ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+            
+            prevCkbfsCellIndex = i;
+            prevCkbfsData = ckbfsData;
+            break;
+          } catch (error) {
+            // Not a CKBFS cell, continue searching
           }
-
-          // Insert continuation content pieces right after the head content
-          for (let i = backContentPieces.length - 1; i >= 0; i--) {
-            contentPieces.unshift(backContentPieces[i]);
-          }
-
-          // Continue following the backlink chain
-          previousTxHash = backWitnessData.previousTxHash;
-          previousWitnessIndex = backWitnessData.previousWitnessIndex;
-        } else {
-          console.warn(`Backlink witness is not a valid CKBFS v3 witness`);
-          break;
         }
       }
+
+      if (prevCkbfsCellIndex === -1 || !prevCkbfsData) {
+        console.warn(`No CKBFS cell found in previous transaction ${previousTxHash}`);
+        break;
+      }
+
+      const previousWitnessIndex = prevCkbfsData.index;
+
+      // Move to the previous CKBFS cell
+      currentTxHash = previousTxHash;
+      currentCellIndex = prevCkbfsCellIndex;
+      currentWitnessIndex = previousWitnessIndex;
     } else {
-      console.warn(`Witness at index ${index} is not a valid CKBFS v3 witness`);
+      console.warn(`Witness at index ${currentWitnessIndex} in transaction ${currentTxHash} is not a valid CKBFS v3 witness`);
+      break;
     }
   }
 
+  // Now assemble all content pieces in chronological order (first creation to latest)
+  const allContentPieces: Uint8Array[] = [];
+  
+  for (const txEntry of transactionChain) {
+    allContentPieces.push(...txEntry.content);
+  }
+
   // Combine all content pieces
-  return Buffer.concat(contentPieces);
+  return Buffer.concat(allContentPieces);
 }
 
 /**

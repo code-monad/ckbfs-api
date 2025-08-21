@@ -183,9 +183,9 @@ async function appendContentV3Example() {
     const txHash = await ckbfs.appendContentV3(
       contentToAppend,
       ckbfsCell,
-      cellInfo.previousTxHash,
-      cellInfo.previousWitnessIndex,
-      cellInfo.previousChecksum,
+      publishTxHash,
+      cellInfo.data.index!,
+      cellInfo.data.checksum!,
       {
         feeRate: 2000,
       }
@@ -219,25 +219,25 @@ async function transferFileV3Example() {
         contentType: "text/plain",
         filename: "v3-example.txt"
       },
-      type: {
+      type: Script.from({
         codeHash: "0x25a6d8a4017d675e457b76e9228bfc3942ddbf8227f8624db4fcf315e49a6b07",
-        hashType: "data1" as any,
+        hashType: "data1",
         args: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-      },
-      lock: {
+      }),
+      lock: Script.from({
         codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
-        hashType: "type" as any,
+        hashType: "type",
         args: "0x1234567890abcdef1234567890abcdef12345678"
-      },
+      }),
       capacity: 200n * 100000000n
     };
 
     // New lock script for the transferred file
-    const newLock = {
+    const newLock = Script.from({
       codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
-      hashType: "type" as any,
+      hashType: "type",
       args: "0xfedcba0987654321fedcba0987654321fedcba09" // New owner's lock args
-    };
+    });
 
     // V3 backlink information (from previous transaction)
     const previousTxHash = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
@@ -290,7 +290,7 @@ async function main() {
     console.log('');
     
     // Uncomment to test append:
-    // await appendContentV3Example();
+    await appendContentV3Example();
     
     // Uncomment to test transfer:
     // await transferFileV3Example();

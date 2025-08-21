@@ -30,7 +30,7 @@ export const CKBFS_CODE_HASH: Record<NetworkType, Record<string, string>> = {
     [ProtocolVersion.V2]:
       "0x31e6376287d223b8c0410d562fb422f04d1d617b2947596a14c3d2efb7218d3a",
     [ProtocolVersion.V3]:
-      "0x25a6d8a4017d675e457b76e9228bfc3942ddbf8227f8624db4fcf315e49a6b07",
+      "0x9741d63744a146821fd96a63b17c6d67ba829556eb9b06dde07934f82f1ab4bd",
   },
 };
 
@@ -61,7 +61,7 @@ export const ADLER32_CODE_HASH: Record<NetworkType, Record<string, string>> = {
     [ProtocolVersion.V2]:
       "0x2138683f76944437c0c643664120d620bdb5858dd6c9d1d156805e279c2c536f",
     [ProtocolVersion.V3]:
-      "0x0356f61ad38c31e9efaabd4cd7895cfed320543030dda00bd14d70b33a467805",
+      "0xbd944c8c5aa127270b591d50ab899c9a2a3e4429300db4ea3d7523aa592c1db1",
   },
 };
 
@@ -92,7 +92,7 @@ export const DEP_GROUP_TX_HASH: Record<NetworkType, Record<string, string>> = {
     [ProtocolVersion.V2]:
       "0x469af0d961dcaaedd872968a9388b546717a6ccfa47b3165b3f9c981e9d66aaa",
     [ProtocolVersion.V3]:
-      "0xeb1ab5ebdf4b4d41b990ab3d524045e6c6f9925230ddcabc8e11ec3a69a3ecc0",
+      "0xa0b447ee2ce635b5a8aa10020117e0b6390b336cd1052acf21e00c179a37821a",
   },
 };
 
@@ -124,9 +124,9 @@ export const DEPLOY_TX_HASH: Record<
     },
     [ProtocolVersion.V3]: {
       ckbfs:
-        "0x610cce3de6b4defc36777914b4de8161117b3434ae4694e8cb86e877a78ba7a3",
+        "0x8d6bd7ea704f9b19af5b83b81544c34982515a825e6185d88faf47583a542671",
       adler32:
-        "0x610cce3de6b4defc36777914b4de8161117b3434ae4694e8cb86e877a78ba7a3",
+        "0x8d6bd7ea704f9b19af5b83b81544c34982515a825e6185d88faf47583a542671",
     },
   },
 };

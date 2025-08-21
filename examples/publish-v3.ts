@@ -11,7 +11,6 @@ const ckbfs = new CKBFS(
     version: ProtocolVersion.V3, // Use v3
     chunkSize: 30 * 1024, // 30KB chunks
     useTypeID: false, // Use code hash instead of type ID
-    rpcUrl: 'https://ckb-testnet-rpc.nervape.com'
   }
 );
 

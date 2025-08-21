@@ -1,6 +1,6 @@
 {
   "name": "@ckbfs/api",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "SDK for CKBFS protocol on CKB",
   "license": "MIT",
   "author": "Code Monad<code@lab-11.org>",
@@ -14,9 +14,13 @@
     "test": "jest",
     "example": "ts-node examples/index.ts",
     "example:publish": "ts-node examples/publish.ts",
+    "example:chunked-publish": "ts-node examples/chunked-publish.ts",
     "example:append": "ts-node examples/append.ts",
     "example:retrieve": "ts-node examples/retrieve.ts",
-    "example:witness-decode-demo": "ts-node examples/witness-decode-demo.ts"
+    "example:witness-decode-demo": "ts-node examples/witness-decode-demo.ts",
+    "example:publish-v3": "ts-node examples/publish-v3.ts",
+    "example:append-v3": "ts-node examples/append-v3.ts",
+    "example:retrieve-v3": "ts-node examples/retrieve-v3.ts"
   },
   "keywords": [
     "ckb",
