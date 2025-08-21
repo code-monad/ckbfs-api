@@ -11,6 +11,7 @@ export enum NetworkType {
 export const ProtocolVersion = {
   V1: "20240906.ce6724722cf6", // Original version, compact and simple, suitable for small files
   V2: "20241025.db973a8e8032", // New version, more features and can do complex operations
+  V3: "20250820.v3", // Witnesses-based storage, no backlinks in cell data, more affordable
 } as const;
 
 export type ProtocolVersionType =
@@ -28,6 +29,8 @@ export const CKBFS_CODE_HASH: Record<NetworkType, Record<string, string>> = {
       "0xe8905ad29a02cf8befa9c258f4f941773839a618d75a64afc22059de9413f712",
     [ProtocolVersion.V2]:
       "0x31e6376287d223b8c0410d562fb422f04d1d617b2947596a14c3d2efb7218d3a",
+    [ProtocolVersion.V3]:
+      "0x25a6d8a4017d675e457b76e9228bfc3942ddbf8227f8624db4fcf315e49a6b07",
   },
 };
 
@@ -41,6 +44,8 @@ export const CKBFS_TYPE_ID: Record<NetworkType, Record<string, string>> = {
       "0x88ef4d436af35684a27edda0d44dd8771318330285f90f02d13606e095aea86f",
     [ProtocolVersion.V2]:
       "0x7c6dcab8268201f064dc8676b5eafa60ca2569e5c6209dcbab0eb64a9cb3aaa3",
+    [ProtocolVersion.V3]:
+      "0xaebf5a7b541da9603c2066a9768d3d18fea2e7f3c1943821611545155fecc671",
   },
 };
 
@@ -55,6 +60,8 @@ export const ADLER32_CODE_HASH: Record<NetworkType, Record<string, string>> = {
       "0x8af42cd329cf1bcffb4c73b48252e99cb32346fdbc1cdaa5ae1d000232d47e84",
     [ProtocolVersion.V2]:
       "0x2138683f76944437c0c643664120d620bdb5858dd6c9d1d156805e279c2c536f",
+    [ProtocolVersion.V3]:
+      "0x0356f61ad38c31e9efaabd4cd7895cfed320543030dda00bd14d70b33a467805",
   },
 };
 
@@ -68,6 +75,8 @@ export const ADLER32_TYPE_ID: Record<NetworkType, Record<string, string>> = {
       "0xccf29a0d8e860044a3d2f6a6e709f6572f77e4fe245fadd212fc342337048d60",
     [ProtocolVersion.V2]:
       "0x5f73f128be76e397f5a3b56c94ca16883a8ee91b498bc0ee80473818318c05ac",
+    [ProtocolVersion.V3]:
+      "0x552e2a5e679f45bca7834b03a1f8613f2a910b64a7bafb51986cfc6f1b6cb31c",
   },
 };
 
@@ -82,6 +91,8 @@ export const DEP_GROUP_TX_HASH: Record<NetworkType, Record<string, string>> = {
       "0xc8fd44aba36f0c4b37536b6c7ea3b88df65fa97e02f77cd33b9bf20bf241a09b",
     [ProtocolVersion.V2]:
       "0x469af0d961dcaaedd872968a9388b546717a6ccfa47b3165b3f9c981e9d66aaa",
+    [ProtocolVersion.V3]:
+      "0xeb1ab5ebdf4b4d41b990ab3d524045e6c6f9925230ddcabc8e11ec3a69a3ecc0",
   },
 };
 
@@ -110,6 +121,12 @@ export const DEPLOY_TX_HASH: Record<
         "0x2c8c9ad3134743368b5a79977648f96c5bd0aba187021a72fb624301064d3616",
       adler32:
         "0x2c8c9ad3134743368b5a79977648f96c5bd0aba187021a72fb624301064d3616",
+    },
+    [ProtocolVersion.V3]: {
+      ckbfs:
+        "0x610cce3de6b4defc36777914b4de8161117b3434ae4694e8cb86e877a78ba7a3",
+      adler32:
+        "0x610cce3de6b4defc36777914b4de8161117b3434ae4694e8cb86e877a78ba7a3",
     },
   },
 };

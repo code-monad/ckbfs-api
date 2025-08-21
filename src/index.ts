@@ -11,6 +11,8 @@ import {
   verifyChecksum,
   updateChecksum,
   verifyWitnessChecksum,
+  verifyV3WitnessChecksum,
+  verifyV3WitnessChain,
 } from "./utils/checksum";
 import {
   createCKBFSCell,
@@ -24,6 +26,16 @@ import {
   CKBFSCellOptions,
   PublishOptions,
   AppendOptions,
+  // V3 functions
+  PublishV3Options,
+  AppendV3Options,
+  TransferV3Options,
+  publishCKBFSV3,
+  appendCKBFSV3,
+  transferCKBFSV3,
+  createPublishV3Transaction,
+  createAppendV3Transaction,
+  createTransferV3Transaction,
 } from "./utils/transaction";
 import {
   readFile,
@@ -48,6 +60,10 @@ import {
   extractFileFromWitnesses,
   decodeFileFromWitnessData,
   saveFileFromWitnessData,
+  // V3 file retrieval functions
+  getFileContentFromChainV3,
+  getFileContentFromChainByIdentifierV3,
+  saveFileFromChainByIdentifierV3,
 } from "./utils/file";
 import {
   createCKBFSWitness,
@@ -55,6 +71,11 @@ import {
   extractCKBFSWitnessContent,
   isCKBFSWitness,
   createChunkedCKBFSWitnesses,
+  createCKBFSV3Witness,
+  createChunkedCKBFSV3Witnesses,
+  extractCKBFSV3WitnessContent,
+  isCKBFSV3Witness,
+  CKBFSV3WitnessOptions,
 } from "./utils/witness";
 import {
   CKBFSData,
@@ -517,6 +538,260 @@ export class CKBFS {
       // No useTypeID option for append
     });
   }
+
+  // V3 Methods
+
+  /**
+   * Publishes a file to CKBFS v3
+   * @param filePath The path to the file to publish
+   * @param options Options for publishing the file
+   * @returns Promise resolving to the transaction hash
+   */
+  async publishFileV3(
+    filePath: string,
+    options: Omit<FileOptions, 'version'> = {},
+  ): Promise<string> {
+    // Read the file and split into chunks
+    const fileContent = readFileAsUint8Array(filePath);
+    const contentChunks = [];
+
+    for (let i = 0; i < fileContent.length; i += this.chunkSize) {
+      contentChunks.push(fileContent.slice(i, i + this.chunkSize));
+    }
+
+    // Get the lock script
+    const lock = await this.getLock();
+
+    // Determine content type if not provided
+    const contentType = options.contentType || getContentType(filePath);
+
+    // Use the filename from the path if not provided
+    const pathParts = filePath.split(/[\\\/]/);
+    const filename = options.filename || pathParts[pathParts.length - 1];
+
+    // Create and sign the transaction using the v3 utility function
+    const tx = await publishCKBFSV3(this.signer, {
+      contentChunks,
+      contentType,
+      filename,
+      lock,
+      capacity: options.capacity,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      version: ProtocolVersion.V3,
+    });
+
+    console.log("Publish file v3 tx:", tx.stringify());
+
+    // Send the transaction
+    const txHash = await this.signer.sendTransaction(tx);
+
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Publishes content (string or Uint8Array) directly to CKBFS v3
+   * @param content The content string or byte array to publish
+   * @param options Options for publishing the content (contentType and filename are required)
+   * @returns Promise resolving to the transaction hash
+   */
+  async publishContentV3(
+    content: string | Uint8Array,
+    options: PublishContentOptions,
+  ): Promise<string> {
+    const contentBytes =
+      typeof content === "string" ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    const lock = await this.getLock();
+
+    // Use provided contentType and filename (required)
+    const { contentType, filename } = options;
+
+    const tx = await publishCKBFSV3(this.signer, {
+      contentChunks,
+      contentType,
+      filename,
+      lock,
+      capacity: options.capacity,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      version: ProtocolVersion.V3,
+    });
+
+    const txHash = await this.signer.sendTransaction(tx);
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Appends content from a file to an existing CKBFS v3 file
+   * @param filePath The path to the file containing the content to append
+   * @param ckbfsCell The CKBFS cell to append to
+   * @param previousTxHash The previous transaction hash for backlink
+   * @param previousWitnessIndex The previous witness index for backlink
+   * @param previousChecksum The previous checksum for backlink
+   * @param options Additional options for the append operation
+   * @returns Promise resolving to the transaction hash
+   */
+  async appendFileV3(
+    filePath: string,
+    ckbfsCell: AppendV3Options["ckbfsCell"],
+    previousTxHash: string,
+    previousWitnessIndex: number,
+    previousChecksum: number,
+    options: Omit<FileOptions, "contentType" | "filename" | "version"> = {},
+  ): Promise<string> {
+    // Read the file and split into chunks
+    const fileContent = readFileAsUint8Array(filePath);
+    const contentChunks = [];
+
+    for (let i = 0; i < fileContent.length; i += this.chunkSize) {
+      contentChunks.push(fileContent.slice(i, i + this.chunkSize));
+    }
+
+    // Create and sign the transaction using the v3 utility function
+    const tx = await appendCKBFSV3(this.signer, {
+      ckbfsCell,
+      contentChunks,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: ProtocolVersion.V3,
+      previousTxHash,
+      previousWitnessIndex,
+      previousChecksum,
+    });
+
+    console.log("Append file v3 tx:", tx.stringify());
+
+    // Send the transaction
+    const txHash = await this.signer.sendTransaction(tx);
+
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Appends content (string or Uint8Array) directly to an existing CKBFS v3 file
+   * @param content The content string or byte array to append
+   * @param ckbfsCell The CKBFS cell to append to
+   * @param previousTxHash The previous transaction hash for backlink
+   * @param previousWitnessIndex The previous witness index for backlink
+   * @param previousChecksum The previous checksum for backlink
+   * @param options Additional options for the append operation
+   * @returns Promise resolving to the transaction hash
+   */
+  async appendContentV3(
+    content: string | Uint8Array,
+    ckbfsCell: AppendV3Options["ckbfsCell"],
+    previousTxHash: string,
+    previousWitnessIndex: number,
+    previousChecksum: number,
+    options: AppendContentOptions = {},
+  ): Promise<string> {
+    const contentBytes =
+      typeof content === "string" ? textEncoder.encode(content) : content;
+    const contentChunks = [];
+
+    for (let i = 0; i < contentBytes.length; i += this.chunkSize) {
+      contentChunks.push(contentBytes.slice(i, i + this.chunkSize));
+    }
+
+    const tx = await appendCKBFSV3(this.signer, {
+      ckbfsCell,
+      contentChunks,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: ProtocolVersion.V3,
+      previousTxHash,
+      previousWitnessIndex,
+      previousChecksum,
+    });
+
+    const txHash = await this.signer.sendTransaction(tx);
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Transfers ownership of a CKBFS v3 file to a new lock script
+   * @param ckbfsCell The CKBFS cell to transfer
+   * @param newLock The new lock script for the transferred file
+   * @param previousTxHash The previous transaction hash for backlink
+   * @param previousWitnessIndex The previous witness index for backlink
+   * @param previousChecksum The previous checksum for backlink
+   * @param options Additional options for the transfer operation
+   * @returns Promise resolving to the transaction hash
+   */
+  async transferFileV3(
+    ckbfsCell: TransferV3Options["ckbfsCell"],
+    newLock: Script,
+    previousTxHash: string,
+    previousWitnessIndex: number,
+    previousChecksum: number,
+    options: Omit<FileOptions, "contentType" | "filename" | "version"> = {},
+  ): Promise<string> {
+    const tx = await transferCKBFSV3(this.signer, {
+      ckbfsCell,
+      newLock,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      version: ProtocolVersion.V3,
+      previousTxHash,
+      previousWitnessIndex,
+      previousChecksum,
+    });
+
+    console.log("Transfer file v3 tx:", tx.stringify());
+
+    const txHash = await this.signer.sendTransaction(tx);
+    return ensureHexPrefix(txHash);
+  }
+
+  /**
+   * Creates a new transaction for publishing a file to CKBFS v3 but doesn't sign or send it
+   * @param filePath The path to the file to publish
+   * @param options Options for publishing the file
+   * @returns Promise resolving to the unsigned transaction
+   */
+  async createPublishV3Transaction(
+    filePath: string,
+    options: Omit<FileOptions, 'version'> = {},
+  ): Promise<Transaction> {
+    // Read the file and split into chunks
+    const fileContent = readFileAsUint8Array(filePath);
+    const contentChunks = [];
+
+    for (let i = 0; i < fileContent.length; i += this.chunkSize) {
+      contentChunks.push(fileContent.slice(i, i + this.chunkSize));
+    }
+
+    // Get the lock script
+    const lock = await this.getLock();
+
+    // Determine content type if not provided
+    const contentType = options.contentType || getContentType(filePath);
+
+    // Use the filename from the path if not provided
+    const pathParts = filePath.split(/[\\\/]/);
+    const filename = options.filename || pathParts[pathParts.length - 1];
+
+    // Create the transaction using the utility function
+    return createPublishV3Transaction(this.signer, {
+      contentChunks,
+      contentType,
+      filename,
+      lock,
+      capacity: options.capacity,
+      feeRate: options.feeRate,
+      network: options.network || this.network,
+      useTypeID: options.useTypeID !== undefined ? options.useTypeID : this.useTypeID,
+      version: ProtocolVersion.V3,
+    });
+  }
 }
 
 // Export utility functions
@@ -526,6 +801,8 @@ export {
   verifyChecksum,
   updateChecksum,
   verifyWitnessChecksum,
+  verifyV3WitnessChecksum,
+  verifyV3WitnessChain,
 
   // Transaction utilities (Exporting original names from transaction.ts)
   createCKBFSCell,
@@ -559,6 +836,11 @@ export {
   extractFileFromWitnesses,
   decodeFileFromWitnessData,
   saveFileFromWitnessData,
+  
+  // V3 File utilities
+  getFileContentFromChainV3,
+  getFileContentFromChainByIdentifierV3,
+  saveFileFromChainByIdentifierV3,
 
   // Witness utilities
   createCKBFSWitness,
@@ -566,6 +848,13 @@ export {
   extractCKBFSWitnessContent,
   isCKBFSWitness,
   createChunkedCKBFSWitnesses,
+  
+  // V3 Witness utilities
+  createCKBFSV3Witness,
+  createChunkedCKBFSV3Witnesses,
+  extractCKBFSV3WitnessContent,
+  isCKBFSV3Witness,
+  CKBFSV3WitnessOptions,
 
   // Molecule definitions
   CKBFSData,

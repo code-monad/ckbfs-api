@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { ProtocolVersion } from "./constants";
+import { extractCKBFSV3WitnessContent } from "./witness";
 
 /**
  * Utility functions for file operations
@@ -1054,4 +1056,258 @@ export async function decodeFileFromChainByTypeId(
     return fileData;
   }
   return null;
+}
+
+/**
+ * Retrieves complete file content from the blockchain for CKBFS v3
+ * V3 stores backlinks in witnesses instead of cell data
+ * @param client The CKB client to use for blockchain queries
+ * @param outPoint The output point of the latest CKBFS v3 cell
+ * @param ckbfsData The data from the latest CKBFS v3 cell
+ * @returns Promise resolving to the complete file content
+ */
+export async function getFileContentFromChainV3(
+  client: any,
+  outPoint: { txHash: string; index: number },
+  ckbfsData: any,
+): Promise<Uint8Array> {
+  console.log(`Retrieving v3 file: ${safelyDecode(ckbfsData.filename)}`);
+  console.log(`Content type: ${safelyDecode(ckbfsData.contentType)}`);
+
+  // Prepare to collect all content pieces
+  const contentPieces: Uint8Array[] = [];
+  let currentOutPoint = outPoint;
+
+  // Process the current transaction first
+  const tx = await client.getTransaction(currentOutPoint.txHash);
+  if (!tx || !tx.transaction) {
+    throw new Error(`Transaction ${currentOutPoint.txHash} not found`);
+  }
+
+  // Get content from witnesses
+  const index = ckbfsData.index;
+  if (index !== undefined && index < tx.transaction.witnesses.length) {
+    const witnessHex = tx.transaction.witnesses[index];
+    const witness = Buffer.from(witnessHex.slice(2), "hex"); // Remove 0x prefix
+
+    // Check if this is a v3 head witness
+    if (witness.length >= 50 && witness.slice(0, 5).toString() === "CKBFS" && witness[5] === 0x03) {
+      // Extract witness data using v3 format
+      const witnessData = extractCKBFSV3WitnessContent(witness, true);
+      contentPieces.push(witnessData.content);
+
+      // Follow the witness chain if there are continuation witnesses
+      let nextIndex = witnessData.nextIndex;
+      while (nextIndex > 0 && nextIndex < tx.transaction.witnesses.length) {
+        const nextWitnessHex = tx.transaction.witnesses[nextIndex];
+        const nextWitness = Buffer.from(nextWitnessHex.slice(2), "hex");
+
+        // Extract continuation witness data
+        const nextWitnessData = extractCKBFSV3WitnessContent(nextWitness, false);
+        contentPieces.push(nextWitnessData.content);
+
+        // Move to next witness
+        nextIndex = nextWitnessData.nextIndex;
+      }
+
+      // Follow backlinks chain from the head witness
+      let previousTxHash = witnessData.previousTxHash;
+      let previousWitnessIndex = witnessData.previousWitnessIndex;
+
+      // If there's a previous transaction, follow the backlink chain
+      while (previousTxHash && previousTxHash !== '0x' + '00'.repeat(32) && previousWitnessIndex !== undefined) {
+        const backTx = await client.getTransaction(previousTxHash);
+        if (!backTx || !backTx.transaction) {
+          console.warn(`Backlink transaction ${previousTxHash} not found`);
+          break;
+        }
+
+        if (previousWitnessIndex >= backTx.transaction.witnesses.length) {
+          console.warn(`Backlink witness index ${previousWitnessIndex} out of range`);
+          break;
+        }
+
+        const backWitnessHex = backTx.transaction.witnesses[previousWitnessIndex];
+        const backWitness = Buffer.from(backWitnessHex.slice(2), "hex");
+
+        // Check if this is a v3 head witness
+        if (backWitness.length >= 50 && backWitness.slice(0, 5).toString() === "CKBFS" && backWitness[5] === 0x03) {
+          const backWitnessData = extractCKBFSV3WitnessContent(backWitness, true);
+          contentPieces.unshift(backWitnessData.content); // Add to beginning
+
+          // Follow continuation witnesses in this transaction
+          let nextBackIndex = backWitnessData.nextIndex;
+          const backContentPieces: Uint8Array[] = [];
+          while (nextBackIndex > 0 && nextBackIndex < backTx.transaction.witnesses.length) {
+            const nextBackWitnessHex = backTx.transaction.witnesses[nextBackIndex];
+            const nextBackWitness = Buffer.from(nextBackWitnessHex.slice(2), "hex");
+
+            const nextBackWitnessData = extractCKBFSV3WitnessContent(nextBackWitness, false);
+            backContentPieces.push(nextBackWitnessData.content);
+
+            nextBackIndex = nextBackWitnessData.nextIndex;
+          }
+
+          // Insert continuation content pieces right after the head content
+          for (let i = backContentPieces.length - 1; i >= 0; i--) {
+            contentPieces.unshift(backContentPieces[i]);
+          }
+
+          // Continue following the backlink chain
+          previousTxHash = backWitnessData.previousTxHash;
+          previousWitnessIndex = backWitnessData.previousWitnessIndex;
+        } else {
+          console.warn(`Backlink witness is not a valid CKBFS v3 witness`);
+          break;
+        }
+      }
+    } else {
+      console.warn(`Witness at index ${index} is not a valid CKBFS v3 witness`);
+    }
+  }
+
+  // Combine all content pieces
+  return Buffer.concat(contentPieces);
+}
+
+/**
+ * Retrieves complete file content from the blockchain using identifier for CKBFS v3
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the complete file content and metadata
+ */
+export async function getFileContentFromChainByIdentifierV3(
+  client: any,
+  identifier: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<{
+  content: Uint8Array;
+  filename: string;
+  contentType: string;
+  checksum: number;
+  size: number;
+  parsedId: ParsedIdentifier;
+} | null> {
+  const {
+    network = "testnet",
+    version = ProtocolVersion.V3,
+    useTypeID = false,
+  } = options;
+
+  try {
+    // Resolve the CKBFS cell using any supported identifier format
+    const cellInfo = await resolveCKBFSCell(client, identifier, {
+      network,
+      version,
+      useTypeID,
+    });
+
+    if (!cellInfo) {
+      console.warn(`CKBFS v3 cell with identifier ${identifier} not found`);
+      return null;
+    }
+
+    const { cell, transaction, outPoint, parsedId } = cellInfo;
+
+    // Import Transaction class dynamically
+    const { Transaction } = await import("@ckb-ccc/core");
+    const tx = Transaction.from(transaction);
+
+    // Get output data from the cell
+    const outputIndex = outPoint.index;
+    const outputData = tx.outputsData[outputIndex];
+
+    if (!outputData) {
+      throw new Error(`Output data not found for cell at index ${outputIndex}`);
+    }
+
+    // Import required modules dynamically
+    const { ccc } = await import("@ckb-ccc/core");
+    const { CKBFSData } = await import("./molecule");
+
+    // Parse the output data
+    const rawData = outputData.startsWith("0x")
+      ? ccc.bytesFrom(outputData.slice(2), "hex")
+      : Buffer.from(outputData, "hex");
+
+    // Unpack CKBFS v3 data
+    const ckbfsData = CKBFSData.unpack(rawData, ProtocolVersion.V3);
+
+    console.log(`Found CKBFS v3 file: ${ckbfsData.filename}`);
+    console.log(`Content type: ${ckbfsData.contentType}`);
+
+    // Use v3-specific function to get complete file content
+    const content = await getFileContentFromChainV3(client, outPoint, ckbfsData);
+
+    return {
+      content,
+      filename: ckbfsData.filename,
+      contentType: ckbfsData.contentType,
+      checksum: ckbfsData.checksum,
+      size: content.length,
+      parsedId,
+    };
+  } catch (error) {
+    console.error(`Error retrieving v3 file by identifier ${identifier}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Saves CKBFS v3 file content retrieved from blockchain by identifier to disk
+ * @param client The CKB client to use for blockchain queries
+ * @param identifier The identifier (TypeID hex, CKBFS TypeID URI, or CKBFS outPoint URI)
+ * @param outputPath Optional path to save the file (defaults to filename from CKBFS data)
+ * @param options Optional configuration for network, version, and useTypeID
+ * @returns Promise resolving to the path where the file was saved, or null if file not found
+ */
+export async function saveFileFromChainByIdentifierV3(
+  client: any,
+  identifier: string,
+  outputPath?: string,
+  options: {
+    network?: "mainnet" | "testnet";
+    version?: string;
+    useTypeID?: boolean;
+  } = {},
+): Promise<string | null> {
+  try {
+    // Get file content by identifier using v3 method
+    const fileData = await getFileContentFromChainByIdentifierV3(
+      client,
+      identifier,
+      { ...options, version: ProtocolVersion.V3 },
+    );
+
+    if (!fileData) {
+      console.warn(`CKBFS v3 file with identifier ${identifier} not found`);
+      return null;
+    }
+
+    // Determine output path
+    const filePath = outputPath || fileData.filename;
+
+    // Ensure directory exists
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, fileData.content);
+    console.log(`CKBFS v3 file saved to: ${filePath}`);
+    console.log(`Size: ${fileData.size} bytes`);
+    console.log(`Content type: ${fileData.contentType}`);
+    console.log(`Checksum: ${fileData.checksum}`);
+
+    return filePath;
+  } catch (error) {
+    console.error(`Error saving v3 file by identifier ${identifier}:`, error);
+    throw error;
+  }
 }

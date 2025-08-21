@@ -58,6 +58,17 @@ export const CKBFSDataV2 = molecule.table(
   ["indexes", "checksum", "contentType", "filename", "backLinks"],
 );
 
+// V3: CKBFSData has no backLinks (moved to witnesses)
+export const CKBFSDataV3 = molecule.table(
+  {
+    index: number.Uint32,
+    checksum: number.Uint32,
+    contentType: blockchain.Bytes,
+    filename: blockchain.Bytes,
+  },
+  ["index", "checksum", "contentType", "filename"],
+);
+
 // Type definitions for TypeScript
 export type BackLinkTypeV1 = {
   index: number;
@@ -79,14 +90,22 @@ export type BackLinkType = {
   txHash: string;
 };
 
-// Combined CKBFSData type that works with both versions
+// V3 specific type
+export type CKBFSDataTypeV3 = {
+  index: number;
+  checksum: number;
+  contentType: string;
+  filename: string;
+};
+
+// Combined CKBFSData type that works with all versions
 export type CKBFSDataType = {
   index?: number;
   indexes?: number[];
   checksum: number;
   contentType: string;
   filename: string;
-  backLinks: BackLinkType[];
+  backLinks?: BackLinkType[];
 };
 
 // Helper function to get indexes array from data
@@ -131,14 +150,22 @@ export const CKBFSData = {
     data: CKBFSDataType,
     version: ProtocolVersionType = ProtocolVersion.V2,
   ): Uint8Array => {
-    if (version === ProtocolVersion.V1) {
+    if (version === ProtocolVersion.V3) {
+      // V3 formatting - no backLinks, uses single index
+      return CKBFSDataV3.pack({
+        index: getIndex(data),
+        checksum: data.checksum,
+        contentType: ccc.bytesFrom(data.contentType, "utf8"),
+        filename: ccc.bytesFrom(data.filename, "utf8"),
+      });
+    } else if (version === ProtocolVersion.V1) {
       // V1 formatting - uses single index
       return CKBFSDataV1.pack({
         index: getIndex(data),
         checksum: data.checksum,
         contentType: ccc.bytesFrom(data.contentType, "utf8"),
         filename: ccc.bytesFrom(data.filename, "utf8"),
-        backLinks: data.backLinks.map((bl) => {
+        backLinks: (data.backLinks || []).map((bl) => {
           // Ensure txHash is in proper format for molecule encoding
           const txHash =
             typeof bl.txHash === "string"
@@ -159,7 +186,7 @@ export const CKBFSData = {
         checksum: data.checksum,
         contentType: ccc.bytesFrom(data.contentType, "utf8"),
         filename: ccc.bytesFrom(data.filename, "utf8"),
-        backLinks: data.backLinks.map((bl) => {
+        backLinks: (data.backLinks || []).map((bl) => {
           // Ensure txHash is in proper format for molecule encoding
           const txHash = typeof bl.txHash === "string" ? bl.txHash : bl.txHash;
 
@@ -177,7 +204,17 @@ export const CKBFSData = {
     version: ProtocolVersionType = ProtocolVersion.V2,
   ): CKBFSDataType => {
     try {
-      if (version === ProtocolVersion.V1) {
+      if (version === ProtocolVersion.V3) {
+        // V3 format - no backLinks
+        const unpacked = CKBFSDataV3.unpack(buf);
+        return {
+          index: unpacked.index,
+          checksum: unpacked.checksum,
+          contentType: ccc.bytesTo(unpacked.contentType, "utf8"),
+          filename: ccc.bytesTo(unpacked.filename, "utf8"),
+          backLinks: [], // V3 has no backLinks in cell data
+        };
+      } else if (version === ProtocolVersion.V1) {
         const unpacked = CKBFSDataV1.unpack(buf);
         return {
           index: unpacked.index,
