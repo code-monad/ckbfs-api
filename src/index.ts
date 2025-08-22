@@ -67,6 +67,7 @@ import {
   getFileContentFromChainV3,
   getFileContentFromChainByIdentifierV3,
   saveFileFromChainByIdentifierV3,
+  resolveCKBFSCell
 } from "./utils/file";
 import {
   createCKBFSWitness,
@@ -1049,6 +1050,7 @@ export {
   createChunkedCKBFSV3Witnesses,
   extractCKBFSV3WitnessContent,
   isCKBFSV3Witness,
+  resolveCKBFSCell,
   CKBFSV3WitnessOptions,
 
   // Molecule definitions

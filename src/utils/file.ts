@@ -510,7 +510,7 @@ export function parseIdentifier(identifier: string): ParsedIdentifier {
  * @param options Optional configuration for network, version, and useTypeID
  * @returns Promise resolving to the found cell and transaction info, or null if not found
  */
-async function resolveCKBFSCell(
+export async function resolveCKBFSCell(
   client: any,
   identifier: string,
   options: {
