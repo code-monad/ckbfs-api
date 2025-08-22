@@ -29,7 +29,8 @@ export interface PublishOptions extends BasePublishOptions {}
 /**
  * Options for appending content to a CKBFS file (V1/V2)
  */
-export interface AppendOptions extends BaseAppendOptions {}
+export interface AppendOptions extends BaseAppendOptions {
+}
 
 /**
  * Creates a CKBFS cell

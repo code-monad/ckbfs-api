@@ -1,6 +1,6 @@
 import { ccc, Transaction, Script, Signer } from "@ckb-ccc/core";
 import { calculateChecksum, updateChecksum } from "../checksum";
-import { CKBFSData, CKBFSDataType } from "../molecule";
+import { CKBFSData, CKBFSDataType, CKBFSDataV3 } from "../molecule";
 import { createChunkedCKBFSV3Witnesses, CKBFSV3WitnessOptions } from "../witness";
 import {
   getCKBFSScriptConfig,
@@ -45,6 +45,7 @@ export interface AppendV3Options {
   network?: NetworkType;
   version: typeof ProtocolVersion.V3;
   from?: Transaction;
+  witnessStartIndex?: number;
   previousTxHash: string;
   previousWitnessIndex: number;
   previousChecksum: number;
@@ -357,6 +358,7 @@ export async function prepareAppendV3Transaction(
     previousTxHash,
     previousWitnessIndex,
     previousChecksum,
+    witnessStartIndex,
   } = options;
 
   // Calculate new checksum by updating from previous checksum
@@ -364,7 +366,7 @@ export async function prepareAppendV3Transaction(
   const newChecksum = await updateChecksum(previousChecksum, combinedContent);
 
   // Calculate the actual witness indices where our content is placed
-  const contentStartIndex = from?.witnesses.length || 1;
+  const contentStartIndex = witnessStartIndex || from?.witnesses.length || 0;
 
   // Create CKBFS v3 witnesses with backlink info
   const ckbfsWitnesses = createChunkedCKBFSV3Witnesses(contentChunks, {
@@ -516,6 +518,8 @@ export async function createAppendV3Transaction(
     // Add more inputs to cover the increased capacity
     await preTx.completeInputsByCapacity(signer);
   }
+
+  await preTx.completeInputsByCapacity(signer);
 
   const witnesses: any = [];
   // add empty witness for signer if ckbfs's lock is the same as signer's lock

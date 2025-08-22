@@ -142,6 +142,7 @@ export type AppendContentOptions = Omit<
   "contentType" | "filename" | "capacity"
 > & { 
   capacity?: bigint;
+  witnessStartIndex?: number;
 };
 
 /**
@@ -395,6 +396,7 @@ export class CKBFS {
       previousTxHash?: string;
       previousWitnessIndex?: number;
       previousChecksum?: number;
+      witnessStartIndex?: number;
     } = {},
   ): Promise<string> {
     // Read the file and split into chunks
@@ -638,6 +640,7 @@ export class CKBFS {
       previousTxHash?: string;
       previousWitnessIndex?: number;
       previousChecksum?: number;
+      witnessStartIndex?: number;
     } = {},
   ): Promise<Transaction> {
     // Read the file and split into chunks
@@ -666,6 +669,7 @@ export class CKBFS {
         previousTxHash: options.previousTxHash,
         previousWitnessIndex: options.previousWitnessIndex,
         previousChecksum: options.previousChecksum,
+        witnessStartIndex: options.witnessStartIndex,
       });
     } else {
       // Legacy V1/V2 behavior or when V3 backlink params are missing
@@ -1005,6 +1009,7 @@ export {
   utilPublishCKBFS as publishCKBFS,
   utilAppendCKBFS as appendCKBFS,
   createAppendTransactionDry,
+  createAppendV3Transaction,
   // File utilities
   readFile,
   readFileAsText,

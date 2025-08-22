@@ -56,6 +56,7 @@ export interface BaseAppendOptions {
   network?: NetworkType;
   version?: ProtocolVersionType;
   from?: Transaction;
+  witnessStartIndex?: number;
 }
 
 /**
