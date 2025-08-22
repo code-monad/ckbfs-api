@@ -208,10 +208,9 @@ export function extractCKBFSV3WitnessContent(witness: Uint8Array, isHeadWitness:
     // Extract previous position
     const prevTxHashBytes = witness.slice(6, 38);
     const previousTxHash = '0x' + Array.from(prevTxHashBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    const previousWitnessIndex = new DataView(witness.slice(38, 42).buffer).getUint32(0, true);
-    const previousChecksum = new DataView(witness.slice(42, 46).buffer).getUint32(0, true);
-    const nextIndex = new DataView(witness.slice(46, 50).buffer).getUint32(0, true);
+    const previousWitnessIndex = new DataView(witness.slice(38, 42).buffer.slice(witness.slice(38, 42).byteOffset, witness.slice(38, 42).byteOffset + 4)).getUint32(0, true);
+    const previousChecksum = new DataView(witness.slice(42, 46).buffer.slice(witness.slice(42, 46).byteOffset, witness.slice(42, 46).byteOffset + 4)).getUint32(0, true);
+    const nextIndex = new DataView(witness.slice(46, 50).buffer.slice(witness.slice(46, 50).byteOffset, witness.slice(46, 50).byteOffset + 4)).getUint32(0, true);
     const content = witness.slice(50);
     
     return {

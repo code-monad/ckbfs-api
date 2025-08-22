@@ -142,10 +142,6 @@ export type AppendContentOptions = Omit<
   "contentType" | "filename" | "capacity"
 > & { 
   capacity?: bigint;
-  // V3 backlink parameters (optional for backward compatibility)
-  previousTxHash?: string;
-  previousWitnessIndex?: number;
-  previousChecksum?: number;
 };
 
 /**
@@ -475,9 +471,9 @@ export class CKBFS {
 
     // Use V3 when backlink parameters are provided or version is V3
     if (version === ProtocolVersion.V3 && 
-        options.previousTxHash && 
-        options.previousWitnessIndex !== undefined && 
-        options.previousChecksum !== undefined) {
+        ckbfsCell.outPoint.txHash && 
+        ckbfsCell.data.index !== undefined && 
+        ckbfsCell.data.checksum !== undefined) {
       
       const tx = await appendCKBFSV3(this.signer, {
         ckbfsCell,
@@ -485,9 +481,9 @@ export class CKBFS {
         feeRate: options.feeRate,
         network: options.network || this.network,
         version: ProtocolVersion.V3,
-        previousTxHash: options.previousTxHash,
-        previousWitnessIndex: options.previousWitnessIndex,
-        previousChecksum: options.previousChecksum,
+        previousTxHash: ckbfsCell.outPoint.txHash,
+        previousWitnessIndex: ckbfsCell.data.index,
+        previousChecksum: ckbfsCell.data.checksum,
       });
 
       const txHash = await this.signer.sendTransaction(tx);
@@ -708,9 +704,9 @@ export class CKBFS {
 
     // Use V3 when backlink parameters are provided or version is V3
     if (version === ProtocolVersion.V3 && 
-        options.previousTxHash && 
-        options.previousWitnessIndex !== undefined && 
-        options.previousChecksum !== undefined) {
+        ckbfsCell.outPoint.txHash && 
+        ckbfsCell.data.index !== undefined && 
+        ckbfsCell.data.checksum !== undefined) {
       
       return createAppendV3Transaction(this.signer, {
         ckbfsCell,
@@ -718,9 +714,9 @@ export class CKBFS {
         feeRate: options.feeRate,
         network: options.network || this.network,
         version: ProtocolVersion.V3,
-        previousTxHash: options.previousTxHash,
-        previousWitnessIndex: options.previousWitnessIndex,
-        previousChecksum: options.previousChecksum,
+        previousTxHash: ckbfsCell.outPoint.txHash,
+        previousWitnessIndex: ckbfsCell.data.index,
+        previousChecksum: ckbfsCell.data.checksum,
       });
     } else {
       // Legacy V1/V2 behavior or when V3 backlink params are missing
