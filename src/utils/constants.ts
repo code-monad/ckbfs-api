@@ -23,6 +23,8 @@ export const CKBFS_CODE_HASH: Record<NetworkType, Record<string, string>> = {
   [NetworkType.Mainnet]: {
     [ProtocolVersion.V2]:
       "0x31e6376287d223b8c0410d562fb422f04d1d617b2947596a14c3d2efb7218d3a",
+    [ProtocolVersion.V3]:
+      "0xb5d13ffe0547c78021c01fe24dce2e959a1ed8edbca3cb93dd2e9f57fb56d695",
   },
   [NetworkType.Testnet]: {
     [ProtocolVersion.V1]:
@@ -38,6 +40,8 @@ export const CKBFS_TYPE_ID: Record<NetworkType, Record<string, string>> = {
   [NetworkType.Mainnet]: {
     [ProtocolVersion.V2]:
       "0xfd2058c9a0c0183354cf637e25d2707ffa9bb6fa2ba9b29f4ebc6be3e54ad7eb",
+    [ProtocolVersion.V3]:
+      "0xcc5411e8b70e551d7a3dd806256533cff6bc12118b48dd7b2d5d2292c3651add",
   },
   [NetworkType.Testnet]: {
     [ProtocolVersion.V1]:
@@ -54,6 +58,8 @@ export const ADLER32_CODE_HASH: Record<NetworkType, Record<string, string>> = {
   [NetworkType.Mainnet]: {
     [ProtocolVersion.V2]:
       "0x2138683f76944437c0c643664120d620bdb5858dd6c9d1d156805e279c2c536f",
+    [ProtocolVersion.V3]:
+      "0xbd944c8c5aa127270b591d50ab899c9a2a3e4429300db4ea3d7523aa592c1db1",
   },
   [NetworkType.Testnet]: {
     [ProtocolVersion.V1]:
@@ -69,6 +75,8 @@ export const ADLER32_TYPE_ID: Record<NetworkType, Record<string, string>> = {
   [NetworkType.Mainnet]: {
     [ProtocolVersion.V2]:
       "0x641c01d590833a3f5471bd441651d9f2a8a200141949cdfeef2d68d8094c5876",
+    [ProtocolVersion.V3]:
+      "0x01b150adbbcba724a3917aefec6453ce4dbf70072d31ad42d0f3429ea32c692b",
   },
   [NetworkType.Testnet]: {
     [ProtocolVersion.V1]:
@@ -85,6 +93,8 @@ export const DEP_GROUP_TX_HASH: Record<NetworkType, Record<string, string>> = {
   [NetworkType.Mainnet]: {
     [ProtocolVersion.V2]:
       "0xfab07962ed7178ed88d450774e2a6ecd50bae856bdb9b692980be8c5147d1bfa",
+    [ProtocolVersion.V3]:
+      "0x03deba7f8206c81981d6f6a2d61b67dde75b4df91cbcfaf2e2fb041ba50c4719",
   },
   [NetworkType.Testnet]: {
     [ProtocolVersion.V1]:
@@ -107,6 +117,12 @@ export const DEPLOY_TX_HASH: Record<
         "0xc9b6698f44c3b80e7e1c48823b2714e432b93f0206ffaf9df885d23267ed2ebc",
       adler32:
         "0xc9b6698f44c3b80e7e1c48823b2714e432b93f0206ffaf9df885d23267ed2ebc",
+    },
+    [ProtocolVersion.V3]: {
+      ckbfs:
+        "0xd25f2c32f56c28c630d4f91955f1b3c9cd53e26fa0745d540d934e8e3d3c2853",
+      adler32:
+        "0xd25f2c32f56c28c630d4f91955f1b3c9cd53e26fa0745d540d934e8e3d3c2853",
     },
   },
   [NetworkType.Testnet]: {
