@@ -1009,7 +1009,17 @@ export {
   utilPublishCKBFS as publishCKBFS,
   utilAppendCKBFS as appendCKBFS,
   createAppendTransactionDry,
+  
+  // V3 transaction utilities
+  publishCKBFSV3,
+  appendCKBFSV3,
+  transferCKBFSV3,
+  createPublishV3Transaction,
+  prepareAppendV3Transaction,
+  preparePublishV3Transaction,
   createAppendV3Transaction,
+  createAppendV3TransactionDry,
+  createTransferV3Transaction,
   // File utilities
   readFile,
   readFileAsText,

@@ -519,8 +519,6 @@ export async function createAppendV3Transaction(
     await preTx.completeInputsByCapacity(signer);
   }
 
-  await preTx.completeInputsByCapacity(signer);
-
   const witnesses: any = [];
   // add empty witness for signer if ckbfs's lock is the same as signer's lock
   if (address.script.hash() === lock.hash()) {
