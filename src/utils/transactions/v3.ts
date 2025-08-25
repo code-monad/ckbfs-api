@@ -366,7 +366,7 @@ export async function prepareAppendV3Transaction(
   const newChecksum = await updateChecksum(previousChecksum, combinedContent);
 
   // Calculate the actual witness indices where our content is placed
-  const contentStartIndex = witnessStartIndex || from?.witnesses.length || 0;
+  const contentStartIndex = from?.witnesses.length || witnessStartIndex  || 0;
 
   // Create CKBFS v3 witnesses with backlink info
   const ckbfsWitnesses = createChunkedCKBFSV3Witnesses(contentChunks, {
@@ -520,12 +520,14 @@ export async function createAppendV3Transaction(
   }
 
   const witnesses: any = [];
+  var witnessOffsetIndex = 0;
   // add empty witness for signer if ckbfs's lock is the same as signer's lock
   if (address.script.hash() === lock.hash()) {
     witnesses.push("0x");
+    witnessOffsetIndex = 1;
   }
   // add ckbfs witnesses (skip the first witness which is for signing)
-  witnesses.push(...preTx.witnesses.slice(1));
+  witnesses.push(...preTx.witnesses.slice(witnessOffsetIndex));
 
   // Add empty witnesses for additional signer inputs
   // This is to ensure that the transaction is valid and can be signed
