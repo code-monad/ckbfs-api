@@ -1,6 +1,6 @@
 {
   "name": "@ckbfs/api",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "SDK for CKBFS protocol on CKB",
   "license": "MIT",
   "author": "Code Monad<code@lab-11.org>",
